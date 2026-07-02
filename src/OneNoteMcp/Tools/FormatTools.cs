@@ -69,7 +69,7 @@ public static class FormatTools
                 success = false,
                 sectionId,
                 outputPath,
-                reason = ex.Message,
+                reason = ComErrorMapper.Describe(ex),
             });
         }
     }

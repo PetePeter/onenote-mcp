@@ -20,7 +20,7 @@ public static class SectionTools
     [Description("Creates a new section under a notebook or section group. Returns the new section's object ID.")]
     public static string CreateSection(
         [Description("OneNote object ID of the parent notebook or section group.")] string parentId,
-        [Description("Name of the new section (a .one extension is added if absent).")] string name)
+        [Description("Name of the new section (a .one extension is added if absent).")] string name) => ToolError.Guard(() =>
     {
         var sectionPath = name.EndsWith(".one", StringComparison.OrdinalIgnoreCase)
             ? name
@@ -28,13 +28,13 @@ public static class SectionTools
 
         return OneNoteSession.Instance.OpenHierarchy(
             sectionPath, parentId, OneNoteCreateFileType.CftSection);
-    }
+    });
 
     [McpServerTool(Name = "onenote_rename_node")]
     [Description("Renames a section, section group, or notebook by its object ID.")]
     public static string RenameNode(
         [Description("OneNote object ID of the node to rename.")] string id,
-        [Description("New name for the node.")] string newName)
+        [Description("New name for the node.")] string newName) => ToolError.Guard(() =>
     {
         // Fetch the node's own XML so the change fragment carries the correct
         // schema namespace; mutate the parsed element in place rather than
@@ -50,14 +50,14 @@ public static class SectionTools
             root.ToString(SaveOptions.DisableFormatting), OneNoteXmlSchema.Xs2013);
 
         return "{\"renamed\":true}";
-    }
+    });
 
     [McpServerTool(Name = "onenote_delete_node")]
     [Description("Deletes a section, section group, or notebook by its object ID.")]
     public static string DeleteNode(
-        [Description("OneNote object ID of the node to delete.")] string id)
+        [Description("OneNote object ID of the node to delete.")] string id) => ToolError.Guard(() =>
     {
         OneNoteSession.Instance.DeleteHierarchy(id);
         return "{\"deleted\":true}";
-    }
+    });
 }

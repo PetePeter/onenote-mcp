@@ -81,14 +81,17 @@ public sealed class SectionToolsIntegrationTests
     }
 
     [Fact]
-    public void DeleteNode_NonExistentId_SurfacesErrorWithoutCrashing()
+    public void DeleteNode_NonExistentId_ReturnsMappedErrorWithoutThrowing()
     {
         if (!_fx.Available) return;
 
-        // A well-formed but non-existent object ID should surface a COM error
-        // rather than take down the process.
-        Assert.ThrowsAny<Exception>(
-            () => SectionTools.DeleteNode("{00000000-0000-0000-0000-000000000000}{1}{B0}"));
+        // A well-formed but non-existent object ID must NOT throw: the tool routes
+        // the COM failure through the central mapper and returns a human-readable
+        // error string as its result (errors-in-tool-results design).
+        var result = SectionTools.DeleteNode("{00000000-0000-0000-0000-000000000000}{1}{B0}");
+
+        Assert.Contains("OneNote error", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"deleted\":true", result); // not a success payload
     }
 
     /// <summary>Reads the current sections under the fixture notebook from live hierarchy XML.</summary>

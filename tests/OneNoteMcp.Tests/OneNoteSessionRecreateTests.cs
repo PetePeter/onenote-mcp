@@ -88,4 +88,18 @@ public sealed class OneNoteSessionRecreateTests
 
         Assert.Equal(2, factoryCallCount); // confirmed: each dead-proxy failure triggers recreation
     }
+
+    [Fact]
+    public void LastComError_IsRecorded_AfterComFailure()
+    {
+        using var session = new OneNoteSession(() => new DeadApp());
+
+        Assert.Throws<COMException>(() =>
+            session.GetHierarchy("", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013));
+
+        // The session records the most recent COM failure (mapped) so diagnostics
+        // can surface a "last error" without any logging infrastructure.
+        Assert.False(string.IsNullOrWhiteSpace(OneNoteSession.LastComError));
+        Assert.Contains("0x800706BA", OneNoteSession.LastComError!, StringComparison.OrdinalIgnoreCase);
+    }
 }

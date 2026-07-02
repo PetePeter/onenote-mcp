@@ -20,7 +20,7 @@ public static class FileExtractionTools
     public static string ExtractPageFiles(
         [Description("OneNote object ID of the page.")] string pageId,
         [Description("Directory to write extracted files to; created if missing.")] string outputDir,
-        [Description("Which binaries to extract: images, files, or all.")] string filter)
+        [Description("Which binaries to extract: images, files, or all.")] string filter) => ToolError.Guard(() =>
     {
         var xml = OneNoteSession.Instance.GetPageContent(
             pageId, PageInfoMapper.MapDetail("all"), OneNoteXmlSchema.Xs2013);
@@ -47,7 +47,7 @@ public static class FileExtractionTools
         }
 
         return JsonSerializer.Serialize(written);
-    }
+    });
 
     /// <summary>
     /// Filters decoded binaries by the caller's selection. Empty or "all" keeps

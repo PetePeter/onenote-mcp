@@ -75,6 +75,13 @@ public sealed class OneNoteSession : IDisposable
     /// <summary>The process-wide singleton session. Created on first access.</summary>
     public static OneNoteSession Instance => _instance.Value;
 
+    /// <summary>
+    /// The most recent COM failure (mapped to human-readable text) seen by any
+    /// session in this process, so diagnostics can surface a "last error" without
+    /// any logging infrastructure. Null until the first COM failure.
+    /// </summary>
+    public static string? LastComError { get; private set; }
+
     private readonly Func<object> _appFactory;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private object? _app;
@@ -157,10 +164,15 @@ public sealed class OneNoteSession : IDisposable
                 {
                     return _app is IApplication real ? typed(real) : fake(_app!);
                 }
-                catch (COMException ex) when (ex.HResult == HrServerUnavailable)
+                catch (COMException ex)
                 {
-                    // Dead proxy — invalidate so EnsureApp recreates next time.
-                    InvalidateApp();
+                    // Record every COM failure for diagnostics before existing handling.
+                    LastComError = ComErrorMapper.Describe(ex);
+                    if (ex.HResult == HrServerUnavailable)
+                    {
+                        // Dead proxy — invalidate so EnsureApp recreates next time.
+                        InvalidateApp();
+                    }
                     throw; // ComRetry sees non-transient and rethrows.
                 }
             });
