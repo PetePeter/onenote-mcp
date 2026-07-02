@@ -31,11 +31,13 @@ public class ServerScaffoldTests
             new[]
             {
                 "onenote_close_notebook",
+                "onenote_convert_section",
                 "onenote_create_notebook",
                 "onenote_create_page",
                 "onenote_create_section",
                 "onenote_delete_node",
                 "onenote_delete_page",
+                "onenote_detect_format",
                 "onenote_diagnostics",
                 "onenote_export_one",
                 "onenote_export_onepkg",
