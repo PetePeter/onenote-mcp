@@ -80,16 +80,48 @@ it. No .NET SDK, no source checkout, no container.
 > a downloadable `.exe` rather than a `docker run ghcr.io/...`-style image — a
 > container cannot reach the host's OneNote COM server.
 
-1. Download `OneNoteMcp-v1.0.0-win-x64.zip` from the
-   [latest release](../../releases/latest) and unzip it anywhere, e.g.
-   `C:\Tools\onenote-mcp\`.
-2. Register the extracted `OneNoteMcp.exe` with Claude Code:
+**Step 1 — Download the build.** Grab `OneNoteMcp-v1.0.0-win-x64.zip` from the
+[latest release](../../releases/latest) and unzip it anywhere, for example
+`C:\Tools\onenote-mcp\`. Note the full path to `OneNoteMcp.exe`.
+
+**Step 2 — Register it with Claude Code, scoped to your user.** Run this in a
+terminal (PowerShell or cmd). The `--scope user` (`-s user`) flag makes the
+server available in **every** project you open with Claude Code, not just the
+current folder:
 
 ```powershell
-claude mcp add onenote -- C:\Tools\onenote-mcp\OneNoteMcp.exe
+claude mcp add onenote --scope user -- "C:\Tools\onenote-mcp\OneNoteMcp.exe"
 ```
 
-That's it — restart Claude Code and the `onenote_*` tools are available.
+**Step 3 — Verify.** Confirm it registered and is reachable:
+
+```powershell
+claude mcp list          # should list "onenote"
+claude mcp get onenote   # shows the command, scope (user), and connection status
+```
+
+That's it — start Claude Code and the `onenote_*` tools are available in any project.
+
+### Choosing a scope
+
+`claude mcp add` writes the server config to one of three places depending on
+`--scope`:
+
+| Scope | Flag | Stored in | Use when |
+| --- | --- | --- | --- |
+| **User** (recommended) | `--scope user` / `-s user` | your Claude user config (`~/.claude.json`) | you want OneNote available in **all** your projects on this machine |
+| **Local** (default) | *(omit, or `-s local`)* | project-local, private to you | you only want it in the **current** project |
+| **Project** | `--scope project` / `-s project` | `.mcp.json` committed in the repo | you want to **share** it with everyone who clones the repo (they still need the exe locally) |
+
+Because this server needs the `OneNoteMcp.exe` present on each machine, **`--scope
+user` is the right choice for personal use** — register once, use everywhere.
+
+### Managing or removing it
+
+```powershell
+claude mcp remove onenote --scope user   # unregister
+claude mcp add onenote --scope user -- "C:\NewPath\OneNoteMcp.exe"   # re-point after moving the exe
+```
 
 ## Register with Claude Code (from source)
 
@@ -106,10 +138,11 @@ Add this to your project's `.mcp.json` (adjust the path to the checkout):
 }
 ```
 
-Or register it from the CLI:
+Or register it from the CLI (add `--scope user` to make it available in every
+project, as in the release install above):
 
 ```powershell
-claude mcp add onenote -- dotnet run --project src/OneNoteMcp/OneNoteMcp.csproj
+claude mcp add onenote --scope user -- dotnet run --project src/OneNoteMcp/OneNoteMcp.csproj
 ```
 
 To run a published binary instead of `dotnet run`:
