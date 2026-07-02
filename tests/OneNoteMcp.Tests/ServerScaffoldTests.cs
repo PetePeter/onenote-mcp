@@ -37,6 +37,7 @@ public class ServerScaffoldTests
                 "onenote_delete_node",
                 "onenote_delete_page",
                 "onenote_diagnostics",
+                "onenote_export_pdf",
                 "onenote_extract_page_files",
                 "onenote_find_pages",
                 "onenote_get_hierarchy",
