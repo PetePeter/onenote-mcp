@@ -20,4 +20,42 @@
     <ProjectReference Include="..\..\src\OneNoteMcp\OneNoteMcp.csproj" />
   </ItemGroup>
 
+  <!--
+    v12 (OneNote 2007) interop, aliased Legacy, so the LegacyOneNoteApp adapter
+    tests can implement a fake v12 IApplication. NOT embedded (matches the
+    production reference) and Private=false because the v12 DLL already reaches
+    the test output via the OneNoteMcp project reference. The modern IApplication
+    used by the ModernOneNoteApp tests needs no reference here — it is embedded
+    into OneNoteMcp.dll and reached through the project reference above.
+  -->
+  <ItemGroup>
+    <!--
+      Modern IApplication, embedded here too. Embedded interop types are NOT
+      re-exported by OneNoteMcp.dll, so the test must embed the same typelib to
+      name IApplication; COM type-equivalence then makes the test's embedded
+      IApplication identical to OneNoteMcp's, so a fake is assignable to
+      ModernOneNoteApp(IApplication).
+    -->
+    <Reference Include="Microsoft.Office.Interop.OneNote">
+      <HintPath>..\..\src\OneNoteMcp\lib\Microsoft.Office.Interop.OneNote.dll</HintPath>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+    <!--
+      v12 interop, aliased Legacy. NOT embedded (matches production): both
+      OneNoteMcp and this project bind the same physical assembly identity, so a
+      fake v12 IApplication is assignable to LegacyOneNoteApp. Private=true so the
+      DLL is copied into the test output — a plain assembly reference's output does
+      NOT flow transitively from the OneNoteMcp project reference, and without it
+      at runtime xUnit SKIPS the whole assembly ("could not find dependent
+      assembly Microsoft.Office.Interop.OneNote2007").
+    -->
+    <Reference Include="Microsoft.Office.Interop.OneNote2007">
+      <HintPath>..\..\src\OneNoteMcp\lib\Microsoft.Office.Interop.OneNote2007.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
+      <Aliases>Legacy</Aliases>
+    </Reference>
+  </ItemGroup>
+
 </Project>

@@ -33,6 +33,21 @@
       <EmbedInteropTypes>true</EmbedInteropTypes>
       <Private>false</Private>
     </Reference>
+    <!--
+      v12 (OneNote 2007) interop. It imports to the SAME managed namespace/type
+      names as the modern PIA (Microsoft.Office.Interop.OneNote.IApplication),
+      so it MUST carry an extern alias (Legacy) to keep the two IApplication
+      types distinct at compile time. Unlike the modern reference this CANNOT be
+      EmbedInteropTypes=true: embedding both emits two identically-named interop
+      types into OneNoteMcp.dll → CS1758. So we ship the v12 interop DLL as a
+      real runtime assembly (Private=true copies it next to OneNoteMcp.dll).
+    -->
+    <Reference Include="Microsoft.Office.Interop.OneNote2007">
+      <HintPath>lib\Microsoft.Office.Interop.OneNote2007.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
+      <Aliases>Legacy</Aliases>
+    </Reference>
   </ItemGroup>
 
 </Project>
