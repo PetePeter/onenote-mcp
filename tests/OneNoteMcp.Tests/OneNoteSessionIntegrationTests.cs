@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
 using OneNoteMcp.Interop;
+using OneNoteMcp.Tests.Fixtures;
 using Xunit;
 
 namespace OneNoteMcp.Tests;
@@ -27,7 +28,7 @@ public sealed class OneNoteSessionIntegrationTests
         string xml;
         try
         {
-            xml = OneNoteSession.Instance.GetHierarchy(
+            xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
                 startNodeId: "",
                 scope: OneNoteScope.HsNotebooks,
                 xmlSchema: OneNoteXmlSchema.Xs2013);
@@ -50,9 +51,7 @@ public sealed class OneNoteSessionIntegrationTests
     /// <summary>
     /// Fail-loud proof that COM ran live. When ONENOTE_COM_REQUIRED=1 this test
     /// must NOT swallow a COMException — it asserts real hierarchy XML came back
-    /// from the OneNote server. Before the early-bound interop fix (P-0541) the
-    /// late-bound path threw TYPE_E_LIBNOTREGISTERED here, so a green under this
-    /// env var proves the early-bound path is genuinely exercising COM.
+    /// from the OneNote server.
     /// When the env var is unset it is a no-op so CI without OneNote still passes.
     /// </summary>
     [Fact]
@@ -63,7 +62,7 @@ public sealed class OneNoteSessionIntegrationTests
             return; // opt-in: only enforced on a machine that must drive OneNote live.
         }
 
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             startNodeId: "",
             scope: OneNoteScope.HsNotebooks,
             xmlSchema: OneNoteXmlSchema.Xs2013);
@@ -81,7 +80,7 @@ public sealed class OneNoteSessionIntegrationTests
             return;
         }
 
-        var display = OneNoteSession.Instance.DetectedVersionDisplay;
+        var display = OneNoteSession.For(FixtureNotebook.TestClsid).DetectedVersionDisplay;
         Assert.False(string.IsNullOrWhiteSpace(display),
             "DetectedVersionDisplay should not be empty when OneNote is installed");
     }

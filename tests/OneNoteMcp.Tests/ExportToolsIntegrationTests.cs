@@ -32,7 +32,7 @@ public sealed class ExportToolsIntegrationTests
         var target = ScratchFile("pdf");
         try
         {
-            var json = ExportTools.ExportPdf(_fx.SectionId, target, "single");
+            var json = ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, target, "single");
 
             var paths = Deserialize(json);
             Assert.Single(paths);
@@ -53,7 +53,7 @@ public sealed class ExportToolsIntegrationTests
         var target = ScratchFile("pdf");
         try
         {
-            var json = ExportTools.ExportPdf(_fx.TextPageId, target, "single");
+            var json = ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.TextPageId, target, "single");
 
             var paths = Deserialize(json);
             Assert.Single(paths);
@@ -76,7 +76,7 @@ public sealed class ExportToolsIntegrationTests
         File.WriteAllText(target, "not a pdf");
         try
         {
-            ExportTools.ExportPdf(_fx.SectionId, target, "single");
+            ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, target, "single");
             AssertIsPdf(target);
         }
         finally
@@ -94,8 +94,8 @@ public sealed class ExportToolsIntegrationTests
         var target = ScratchFile("pdf");
         try
         {
-            ExportTools.ExportPdf(_fx.SectionId, target, "single");
-            ExportTools.ExportPdf(_fx.SectionId, target, "single");
+            ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, target, "single");
+            ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, target, "single");
             AssertIsPdf(target);
         }
         finally
@@ -115,7 +115,7 @@ public sealed class ExportToolsIntegrationTests
         var dir = ScratchDir();
         try
         {
-            var json = ExportTools.ExportPdf(_fx.SectionId, dir, "perPage");
+            var json = ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, dir, "perPage");
 
             var paths = Deserialize(json);
             Assert.Equal(2, paths.Length);
@@ -138,7 +138,7 @@ public sealed class ExportToolsIntegrationTests
         try
         {
             var sw = Stopwatch.StartNew();
-            ExportTools.ExportPdf(_fx.SectionId, dir, "perPage", delayMs);
+            ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, dir, "perPage", delayMs);
             sw.Stop();
 
             Assert.True(sw.ElapsedMilliseconds >= delayMs,
@@ -155,17 +155,17 @@ public sealed class ExportToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var sectionId = SectionTools.CreateSection(_fx.NotebookId, "Empty " + Guid.NewGuid().ToString("N"));
+        var sectionId = SectionTools.CreateSection(FixtureNotebook.TestVersion, _fx.NotebookId, "Empty " + Guid.NewGuid().ToString("N"));
         var dir = ScratchDir();
         try
         {
-            var json = ExportTools.ExportPdf(sectionId, dir, "perPage");
+            var json = ExportTools.ExportPdf(FixtureNotebook.TestVersion, sectionId, dir, "perPage");
             Assert.Empty(Deserialize(json));
         }
         finally
         {
             TryDeleteDir(dir);
-            try { SectionTools.DeleteNode(sectionId); } catch { /* best-effort */ }
+            try { SectionTools.DeleteNode(FixtureNotebook.TestVersion, sectionId); } catch { /* best-effort */ }
         }
     }
 
@@ -179,7 +179,7 @@ public sealed class ExportToolsIntegrationTests
         // that may or may not be mapped on any given host.
         var illegalPath = Path.Combine(Path.GetTempPath(), "onenote-mcp\0nodir", "x.pdf");
         Assert.ThrowsAny<Exception>(
-            () => ExportTools.ExportPdf(_fx.SectionId, illegalPath, "single"));
+            () => ExportTools.ExportPdf(FixtureNotebook.TestVersion, _fx.SectionId, illegalPath, "single"));
     }
 
     // ── COM-free argument validation ─────────────────────────────────────────────
@@ -190,7 +190,7 @@ public sealed class ExportToolsIntegrationTests
         var target = ScratchFile("pdf");
 
         var ex = Assert.Throws<ArgumentException>(
-            () => ExportTools.ExportPdf("{id}", target, "bogus"));
+            () => ExportTools.ExportPdf(FixtureNotebook.TestVersion, "{id}", target, "bogus"));
 
         Assert.Contains("bogus", ex.Message);
         Assert.False(File.Exists(target), "Validation must run before any file is produced.");

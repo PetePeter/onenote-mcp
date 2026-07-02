@@ -30,7 +30,7 @@ public sealed class HierarchyToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var json = HierarchyTools.ListNotebooks();
+        var json = HierarchyTools.ListNotebooks(FixtureNotebook.TestVersion);
         var notebooks = JsonSerializer.Deserialize<NotebookInfo[]>(json, JsonOpts)!;
 
         Assert.Contains(notebooks, n => n.Id == _fx.NotebookId);
@@ -41,7 +41,7 @@ public sealed class HierarchyToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var xml = HierarchyTools.GetHierarchy(_fx.NotebookId, "pages");
+        var xml = HierarchyTools.GetHierarchy(FixtureNotebook.TestVersion, _fx.NotebookId, "pages");
 
         Assert.Contains(_fx.TextPageId, xml);
         Assert.Contains(_fx.ImagePageId, xml);
@@ -55,7 +55,7 @@ public sealed class HierarchyToolsIntegrationTests
         string json;
         try
         {
-            json = HierarchyTools.FindPages(_fx.KnownTitle);
+            json = HierarchyTools.FindPages(FixtureNotebook.TestVersion, _fx.KnownTitle);
         }
         catch (COMException)
         {

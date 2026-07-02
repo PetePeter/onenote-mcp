@@ -21,7 +21,7 @@ public sealed class FixtureNotebookTests
     {
         if (!_fx.Available) return;
 
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             "", OneNoteScope.HsSections, OneNoteXmlSchema.Xs2013);
 
         Assert.Contains(_fx.NotebookId, xml);
@@ -32,7 +32,7 @@ public sealed class FixtureNotebookTests
     {
         if (!_fx.Available) return;
 
-        var content = OneNoteSession.Instance.GetPageContent(
+        var content = OneNoteSession.For(FixtureNotebook.TestClsid).GetPageContent(
             _fx.TextPageId, 0, OneNoteXmlSchema.Xs2013);
 
         Assert.Contains(_fx.KnownTitle, content);
@@ -44,7 +44,7 @@ public sealed class FixtureNotebookTests
     {
         if (!_fx.Available) return;
 
-        var content = OneNoteSession.Instance.GetPageContent(
+        var content = OneNoteSession.For(FixtureNotebook.TestClsid).GetPageContent(
             _fx.ImagePageId, 0, OneNoteXmlSchema.Xs2013);
 
         Assert.Contains("one:Image", content);
@@ -67,7 +67,7 @@ public sealed class FixtureNotebookTests
 
         Assert.False(System.IO.Directory.Exists(dir));
 
-        var hierarchy = OneNoteSession.Instance.GetHierarchy(
+        var hierarchy = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             "", OneNoteScope.HsSections, OneNoteXmlSchema.Xs2013);
         Assert.DoesNotContain(id, hierarchy);
     }

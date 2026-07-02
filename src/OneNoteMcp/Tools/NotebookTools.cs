@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.Versioning;
 using ModelContextProtocol.Server;
 using OneNoteMcp.Interop;
+using OneNoteMcp.Model;
 
 namespace OneNoteMcp.Tools;
 
@@ -17,29 +18,29 @@ public static class NotebookTools
     [McpServerTool(Name = "onenote_open_notebook")]
     [Description("Opens an existing notebook folder in OneNote. Returns the notebook's object ID.")]
     public static string OpenNotebook(
-        [Description("Filesystem path to the notebook folder.")] string path) => ToolError.Guard(() =>
-    {
-        return OneNoteSession.Instance.OpenHierarchy(
-            NormalizeNotebookPath(path), "", OneNoteCreateFileType.CftNone);
-    });
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("Filesystem path to the notebook folder.")] string path) =>
+        ToolVersion.Guarded(version, Capability.OpenHierarchy, s =>
+            s.OpenHierarchy(NormalizeNotebookPath(path), "", OneNoteCreateFileType.CftNone));
 
     [McpServerTool(Name = "onenote_create_notebook")]
     [Description("Creates a new notebook at the given folder path. Returns the notebook's object ID.")]
     public static string CreateNotebook(
-        [Description("Filesystem path for the new notebook folder.")] string path) => ToolError.Guard(() =>
-    {
-        return OneNoteSession.Instance.OpenHierarchy(
-            NormalizeNotebookPath(path), "", OneNoteCreateFileType.CftNotebook);
-    });
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("Filesystem path for the new notebook folder.")] string path) =>
+        ToolVersion.Guarded(version, Capability.OpenHierarchy, s =>
+            s.OpenHierarchy(NormalizeNotebookPath(path), "", OneNoteCreateFileType.CftNotebook));
 
     [McpServerTool(Name = "onenote_close_notebook")]
     [Description("Closes an open notebook. Does not delete files on disk.")]
     public static string CloseNotebook(
-        [Description("OneNote object ID of the notebook to close.")] string notebookId) => ToolError.Guard(() =>
-    {
-        OneNoteSession.Instance.CloseNotebook(notebookId);
-        return "{\"closed\":true}";
-    });
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("OneNote object ID of the notebook to close.")] string notebookId) =>
+        ToolVersion.Guarded(version, Capability.CloseNotebook, s =>
+        {
+            s.CloseNotebook(notebookId);
+            return "{\"closed\":true}";
+        });
 
     /// <summary>
     /// Ensures the notebook folder path ends with a directory separator. OneNote

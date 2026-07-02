@@ -35,7 +35,7 @@ public sealed class FileExtractionToolsIntegrationTests
         var outDir = NewOutputDir();
         try
         {
-            var json = FileExtractionTools.ExtractPageFiles(_fx.ImagePageId, outDir, "images");
+            var json = FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, _fx.ImagePageId, outDir, "images");
             var files = JsonSerializer.Deserialize<List<ExtractedFile>>(json, JsonOpts)!;
 
             var file = Assert.Single(files);
@@ -59,7 +59,7 @@ public sealed class FileExtractionToolsIntegrationTests
         Assert.False(Directory.Exists(outDir));
         try
         {
-            FileExtractionTools.ExtractPageFiles(_fx.ImagePageId, outDir, "all");
+            FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, _fx.ImagePageId, outDir, "all");
 
             Assert.True(Directory.Exists(outDir));
         }
@@ -77,7 +77,7 @@ public sealed class FileExtractionToolsIntegrationTests
         var outDir = NewOutputDir();
         try
         {
-            var json = FileExtractionTools.ExtractPageFiles(_fx.TextPageId, outDir, "all");
+            var json = FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, _fx.TextPageId, outDir, "all");
             var files = JsonSerializer.Deserialize<List<ExtractedFile>>(json, JsonOpts)!;
 
             Assert.Empty(files);

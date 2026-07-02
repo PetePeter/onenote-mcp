@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using OneNoteMcp.Interop;
+using OneNoteMcp.Model;
 
 namespace OneNoteMcp.Tests.Fixtures;
 
@@ -24,6 +25,12 @@ public sealed class FixtureNotebook : IDisposable
     // Clean-room 1x1 transparent PNG (generated, not copied from any source notebook).
     private const string OnePixelPngBase64 =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    /// <summary>Version token used by all COM integration tests.</summary>
+    public const string TestVersion = "2016";
+
+    /// <summary>Canonical CLSID for TestVersion, used to route sessions in integration tests.</summary>
+    public static readonly string TestClsid = VersionResolver.Resolve(TestVersion);
 
     /// <summary>True only when the full COM build succeeded and content is ready.</summary>
     public bool Available { get; }
@@ -77,7 +84,7 @@ public sealed class FixtureNotebook : IDisposable
 
         try
         {
-            var session = OneNoteSession.Instance;
+            var session = OneNoteSession.For(TestClsid);
 
             Directory = Path.Combine(
                 Path.GetTempPath(), "onenote-mcp-tests", Guid.NewGuid().ToString("N"));
@@ -135,7 +142,7 @@ public sealed class FixtureNotebook : IDisposable
         {
             try
             {
-                OneNoteSession.Instance.CloseNotebook(NotebookId);
+                OneNoteSession.For(TestClsid).CloseNotebook(NotebookId);
             }
             catch (COMException)
             {

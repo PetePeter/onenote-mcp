@@ -1,59 +1,45 @@
 using System.Runtime.InteropServices;
 using OneNoteMcp.Interop;
+using OneNoteMcp.Tests.Fakes;
 using Xunit;
 
 namespace OneNoteMcp.Tests;
 
 /// <summary>
 /// Unit tests for OneNoteSession's recreate-on-death behaviour.
-/// Uses injected fake COM objects — no real OneNote required.
+/// Uses injected IOneNoteApp fakes — no real OneNote required.
 /// </summary>
 [Collection("OneNote COM")]
-public sealed class OneNoteSessionRecreateTests
+public sealed class OneNoteSessionRecreateTests : IDisposable
 {
-    /// <summary>
-    /// Fake that always throws 0x800706BA (server unavailable) on any method call.
-    /// Used to simulate a dead COM proxy.
-    /// </summary>
-    private sealed class DeadApp
-    {
-        public void GetHierarchy(string startNodeId, int scope, ref string xml, int xmlSchema)
-            => throw new COMException("Server unavailable", unchecked((int)0x800706BA));
-    }
-
-    /// <summary>
-    /// Fake that always succeeds, returning a valid XML hierarchy string.
-    /// Used as the replacement after a dead proxy is recreated.
-    /// </summary>
-    private sealed class LiveApp
-    {
-        public void GetHierarchy(string startNodeId, int scope, ref string xml, int xmlSchema)
-            => xml = "<Notebooks />";
-    }
+    public OneNoteSessionRecreateTests() => OneNoteSession.ResetForTests();
+    public void Dispose() => OneNoteSession.ResetForTests();
 
     [Fact]
     public void FactoryCalledAgain_AfterDeadProxy()
     {
         int factoryCallCount = 0;
 
-        // First factory call returns DeadApp (throws 0x800706BA).
-        // Second factory call returns LiveApp (succeeds).
+        // First factory call returns a dead proxy (throws 0x800706BA).
+        // Second factory call returns a live app (succeeds).
         using var session = new OneNoteSession(() =>
         {
             factoryCallCount++;
-            return factoryCallCount == 1 ? (object)new DeadApp() : new LiveApp();
+            return factoryCallCount == 1
+                ? new FakeOneNoteApp { DeadProxy = true }
+                : new FakeOneNoteApp { ReturnValue = "<Notebooks />" };
         });
 
         Assert.Equal(0, factoryCallCount); // lazy: nothing created yet
 
-        // First call: factory builds DeadApp (#1), which throws 0x800706BA.
+        // First call: factory builds dead app (#1), which throws 0x800706BA.
         // Session marks proxy dead (invalidates). COMException propagates out.
         Assert.Throws<COMException>(() =>
             session.GetHierarchy("", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013));
 
-        Assert.Equal(1, factoryCallCount); // factory was called once for DeadApp
+        Assert.Equal(1, factoryCallCount); // factory was called once for dead app
 
-        // Second call: factory builds LiveApp (#2), which succeeds.
+        // Second call: factory builds live app (#2), which succeeds.
         var xml = session.GetHierarchy("", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013);
 
         Assert.Equal(2, factoryCallCount); // factory called again — recreate-on-death confirmed
@@ -69,13 +55,13 @@ public sealed class OneNoteSessionRecreateTests
         {
             factoryCallCount++;
             // Always return a dead app so we can observe recreation attempts
-            return new DeadApp();
+            return new FakeOneNoteApp { DeadProxy = true };
         });
 
         // Force invalidation without making any COM call
         session.InvalidateForTests();
 
-        // Next call: factory creates DeadApp, which throws 0x800706BA
+        // Next call: factory creates dead app, which throws 0x800706BA
         Assert.Throws<COMException>(() =>
             session.GetHierarchy("", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013));
 
@@ -92,7 +78,7 @@ public sealed class OneNoteSessionRecreateTests
     [Fact]
     public void LastComError_IsRecorded_AfterComFailure()
     {
-        using var session = new OneNoteSession(() => new DeadApp());
+        using var session = new OneNoteSession(() => new FakeOneNoteApp { DeadProxy = true });
 
         Assert.Throws<COMException>(() =>
             session.GetHierarchy("", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013));

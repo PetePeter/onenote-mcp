@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using OneNoteMcp.Model;
+using OneNoteMcp.Tests.Fixtures;
 using OneNoteMcp.Tools;
 using Xunit;
 
@@ -25,7 +26,7 @@ public class FormatToolsDetectTests
             OneFileFormatSniffer.FileFormatRevisionStore);
         try
         {
-            var json = FormatTools.DetectFormat(path);
+            var json = FormatTools.DetectFormat(FixtureNotebook.TestVersion, path);
             var doc = Parse(json);
 
             Assert.Equal("current2010Plus", doc.GetProperty("format").GetString());
@@ -45,7 +46,7 @@ public class FormatToolsDetectTests
         var path = WriteHeaderFile(OneFileFormatSniffer.FileTypeSection, LegacyFormatGuid);
         try
         {
-            var json = FormatTools.DetectFormat(path);
+            var json = FormatTools.DetectFormat(FixtureNotebook.TestVersion, path);
             var doc = Parse(json);
 
             Assert.Equal("legacy2007", doc.GetProperty("format").GetString());
@@ -67,7 +68,7 @@ public class FormatToolsDetectTests
         var before = File.ReadAllBytes(path);
         try
         {
-            FormatTools.DetectFormat(path);
+            FormatTools.DetectFormat(FixtureNotebook.TestVersion, path);
 
             Assert.Equal(before, File.ReadAllBytes(path));
         }
@@ -83,7 +84,7 @@ public class FormatToolsDetectTests
         // A path that is neither an existing file nor a resolvable OneNote node must
         // produce an honest report, never an unhandled crash.
         var missing = Path.Combine(Path.GetTempPath(), $"detect-missing-{Guid.NewGuid():N}.one");
-        var json = FormatTools.DetectFormat(missing);
+        var json = FormatTools.DetectFormat(FixtureNotebook.TestVersion, missing);
         var doc = Parse(json);
         Assert.Equal("notOneNoteFile", doc.GetProperty("format").GetString());
         Assert.Equal(missing, doc.GetProperty("input").GetString());
@@ -130,7 +131,7 @@ public sealed class FormatToolsConvertIntegrationTests
         var target = ScratchFile("one");
         try
         {
-            var json = FormatTools.ConvertSection(_fx.SectionId, target);
+            var json = FormatTools.ConvertSection(FixtureNotebook.TestVersion, _fx.SectionId, target);
             var doc = JsonDocument.Parse(json).RootElement;
 
             Assert.True(doc.GetProperty("success").GetBoolean());
@@ -152,7 +153,7 @@ public sealed class FormatToolsConvertIntegrationTests
         var target = ScratchFile("one");
         try
         {
-            var json = FormatTools.ConvertSection("{00000000-0000-0000-0000-000000000000}{1}{0}", target);
+            var json = FormatTools.ConvertSection(FixtureNotebook.TestVersion, "{00000000-0000-0000-0000-000000000000}{1}{0}", target);
             var doc = JsonDocument.Parse(json).RootElement;
 
             Assert.False(doc.GetProperty("success").GetBoolean());

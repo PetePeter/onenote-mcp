@@ -1,5 +1,6 @@
-using System.Reflection;
-using System.Runtime.ExceptionServices;
+extern alias Legacy;
+using System.Collections.Concurrent;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Office.Interop.OneNote;
 
@@ -90,9 +91,11 @@ public static class OneNoteFilingLocationType
 // ─── Session ──────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Lazy, recreatable bridge to the OneNote COM Application object.
-/// All COM calls are serialised through a single semaphore because the
-/// OneNote Application object lives in a single-threaded COM apartment.
+/// Lazy, recreatable bridge to the OneNote COM Application object, keyed per CLSID.
+/// All COM calls are serialised through a single semaphore because the OneNote
+/// Application object lives in a single-threaded COM apartment.
+/// Use <see cref="For(string)"/> to obtain a per-CLSID session; do NOT use a
+/// process-wide singleton — different OneNote versions require different CLSIDs.
 /// </summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public sealed class OneNoteSession : IDisposable
@@ -100,39 +103,82 @@ public sealed class OneNoteSession : IDisposable
     // HRESULT for "RPC server unavailable" — COM object must be recreated
     private const int HrServerUnavailable = unchecked((int)0x800706BA);
 
-    private static readonly Lazy<OneNoteSession> _instance =
-        new(() => new OneNoteSession(CreateRealApp), LazyThreadSafetyMode.ExecutionAndPublication);
+    // ── Per-CLSID session cache ───────────────────────────────────────────────
 
-    /// <summary>The process-wide singleton session. Created on first access.</summary>
-    public static OneNoteSession Instance => _instance.Value;
+    private static readonly ConcurrentDictionary<string, OneNoteSession> _sessions =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Test seam: when set, replaces the real COM factory for every new session.
+    /// The override receives the CLSID string and returns an <see cref="IOneNoteApp"/>.
+    /// </summary>
+    internal static Func<string, IOneNoteApp>? AppFactoryOverride { get; set; }
+
+    /// <summary>
+    /// Returns (or creates) a session for the given canonical CLSID string.
+    /// Sessions are cached process-wide: the same CLSID always returns the same
+    /// instance so COM objects are not multiplied.
+    /// </summary>
+    public static OneNoteSession For(string clsid) =>
+        _sessions.GetOrAdd(clsid, c => new OneNoteSession(() => CreateApp(c)));
+
+    /// <summary>
+    /// Disposes all cached sessions, clears the cache, and nulls the test override.
+    /// Must be called in test setup and teardown to prevent state leaks between tests.
+    /// </summary>
+    internal static void ResetForTests()
+    {
+        foreach (var s in _sessions.Values) s.Dispose();
+        _sessions.Clear();
+        AppFactoryOverride = null;
+    }
+
+    private static IOneNoteApp CreateApp(string clsid) =>
+        AppFactoryOverride?.Invoke(clsid) ?? CreateRealApp(clsid);
+
+    /// <summary>
+    /// Instantiates a COM server by CLSID and wraps it in the appropriate adapter.
+    /// Major 12 (OneNote 2007) gets a LegacyOneNoteApp; all other versions use the
+    /// modern adapter which supports the full 23-method surface.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static IOneNoteApp CreateRealApp(string clsid)
+    {
+        var guid = new Guid(clsid);
+        var canonical = guid.ToString("B").ToUpperInvariant();
+        var major = OneNoteVersionCatalog.All
+            .FirstOrDefault(k => string.Equals(k.Clsid, canonical, StringComparison.OrdinalIgnoreCase))
+            ?.Major ?? 16;
+
+        var type = Type.GetTypeFromCLSID(guid)
+            ?? throw new InvalidOperationException($"No COM class registered for CLSID {clsid}.");
+        var rcw = Activator.CreateInstance(type)
+            ?? throw new InvalidOperationException($"Failed to instantiate OneNote COM server {clsid}.");
+
+        return major == 12
+            ? new LegacyOneNoteApp((Legacy::Microsoft.Office.Interop.OneNote.IApplication)rcw)
+            : new ModernOneNoteApp((IApplication)rcw);
+    }
+
+    // ── Instance state ────────────────────────────────────────────────────────
 
     /// <summary>
     /// The most recent COM failure (mapped to human-readable text) seen by any
-    /// session in this process, so diagnostics can surface a "last error" without
-    /// any logging infrastructure. Null until the first COM failure.
+    /// session in this process. Null until the first COM failure.
     /// </summary>
     public static string? LastComError { get; private set; }
 
-    private readonly Func<object> _appFactory;
+    private readonly Func<IOneNoteApp> _appFactory;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private object? _app;
+    private IOneNoteApp? _app;
 
     /// <summary>
     /// Creates a session with an injectable COM app factory.
     /// Used by tests to verify recreate-on-death behaviour without real COM.
     /// </summary>
-    internal OneNoteSession(Func<object> appFactory)
+    internal OneNoteSession(Func<IOneNoteApp> appFactory)
     {
         _appFactory = appFactory;
-    }
-
-    private static object CreateRealApp()
-    {
-        // Early-bound coclass instantiation. The generated interop assembly carries
-        // the CLSID, so `new Application()` produces a strongly-typed IApplication
-        // RCW. This is the path that actually works against OneNote on .NET Core —
-        // the late-bound ProgID/InvokeMember path throws TYPE_E_LIBNOTREGISTERED.
-        return new Application();
     }
 
     /// <summary>
@@ -158,32 +204,24 @@ public sealed class OneNoteSession : IDisposable
     private void EnsureApp()
     {
         if (_app is null)
-        {
             _app = _appFactory();
-        }
     }
 
     /// <summary>
     /// Marks the current COM app object as dead so <see cref="EnsureApp"/>
     /// will recreate it on the next call.
     /// </summary>
-    private void InvalidateApp()
-    {
-        _app = null;
-    }
+    private void InvalidateApp() => _app = null;
 
-    /// <summary>
-    /// Exposes invalidation for test scenarios that simulate a dead COM proxy.
-    /// </summary>
+    /// <summary>Exposes invalidation for test scenarios that simulate a dead COM proxy.</summary>
     internal void InvalidateForTests() => InvalidateApp();
 
     /// <summary>
     /// Runs a COM operation under the serialising semaphore with retry and
-    /// recreate-on-death. When the live application is present it is dispatched
-    /// strongly-typed via <paramref name="typed"/>; the injected test-fake path
-    /// (a duck-typed POCO) is dispatched late-bound via <paramref name="fake"/>.
+    /// recreate-on-death. Delegates through the IOneNoteApp adapter so the same
+    /// path works for both the modern and legacy (v12) COM servers.
     /// </summary>
-    private T Dispatch<T>(Func<IApplication, T> typed, Func<object, T> fake)
+    private T Dispatch<T>(Func<IOneNoteApp, T> op)
     {
         _lock.Wait();
         try
@@ -193,18 +231,15 @@ public sealed class OneNoteSession : IDisposable
                 EnsureApp();
                 try
                 {
-                    return _app is IApplication real ? typed(real) : fake(_app!);
+                    return op(_app!);
                 }
                 catch (COMException ex)
                 {
                     // Record every COM failure for diagnostics before existing handling.
                     LastComError = ComErrorMapper.Describe(ex);
                     if (ex.HResult == HrServerUnavailable)
-                    {
-                        // Dead proxy — invalidate so EnsureApp recreates next time.
-                        InvalidateApp();
-                    }
-                    throw; // ComRetry sees non-transient and rethrows.
+                        InvalidateApp(); // Dead proxy — recreate on next call.
+                    throw;
                 }
             });
         }
@@ -221,302 +256,121 @@ public sealed class OneNoteSession : IDisposable
     }
 
     /// <summary>Void overload of <see cref="Dispatch{T}"/>.</summary>
-    private void Dispatch(Action<IApplication> typed, Action<object> fake) =>
-        Dispatch<int>(
-            app => { typed(app); return 0; },
-            obj => { fake(obj); return 0; });
-
-    /// <summary>
-    /// Late-bound invocation used ONLY for injected test fakes. args is passed by
-    /// reference so out/ref parameters written back by the fake are visible after
-    /// the call. Unwraps TargetInvocationException so the real COMException (with
-    /// its HRESULT) reaches ComRetry / the recreate-on-death guard.
-    /// </summary>
-    private static void InvokeFake(object app, string method, object?[] args)
-    {
-        try
-        {
-            app.GetType().InvokeMember(
-                method, BindingFlags.InvokeMethod, null, app, args);
-        }
-        catch (TargetInvocationException tie) when (tie.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
-            throw; // unreachable; satisfies compiler
-        }
-    }
+    private void Dispatch(Action<IOneNoteApp> op) =>
+        Dispatch<int>(a => { op(a); return 0; });
 
     // ── Public COM wrappers ───────────────────────────────────────────────────
-    // Public surface is unchanged (int consts in, string out); only the internals
-    // switched from late-bound InvokeMember to early-bound IApplication calls.
+    // Each method delegates straight to IOneNoteApp via Dispatch.
 
     /// <summary>
     /// Returns the OneNote hierarchy XML starting from <paramref name="startNodeId"/>.
     /// Pass empty string for the root (all notebooks).
     /// </summary>
     public string GetHierarchy(string startNodeId, int scope, int xmlSchema) =>
-        Dispatch(
-            real =>
-            {
-                real.GetHierarchy(startNodeId, (HierarchyScope)scope, out var xml, (XMLSchema)xmlSchema);
-                return xml;
-            },
-            fake =>
-            {
-                var args = new object?[] { startNodeId, scope, string.Empty, xmlSchema };
-                InvokeFake(fake, "GetHierarchy", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.GetHierarchy(startNodeId, scope, xmlSchema));
 
     /// <summary>Runs a OneNote search and returns hierarchy XML of matching pages.</summary>
     public string FindPages(string searchString, int xmlSchema, string startNodeId = "") =>
-        Dispatch(
-            real =>
-            {
-                real.FindPages(startNodeId, searchString, out var xml, false, false, (XMLSchema)xmlSchema);
-                return xml;
-            },
-            fake =>
-            {
-                var args = new object?[] { startNodeId, searchString, string.Empty, false, false, xmlSchema };
-                InvokeFake(fake, "FindPages", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.FindPages(searchString, xmlSchema, startNodeId));
 
     /// <summary>Returns the XML content of a OneNote page.</summary>
     public string GetPageContent(string pageId, int pageInfo, int xmlSchema) =>
-        Dispatch(
-            real =>
-            {
-                real.GetPageContent(pageId, out var xml, (PageInfo)pageInfo, (XMLSchema)xmlSchema);
-                return xml;
-            },
-            fake =>
-            {
-                var args = new object?[] { pageId, string.Empty, pageInfo, xmlSchema };
-                InvokeFake(fake, "GetPageContent", args);
-                return (string)args[1]!;
-            });
+        Dispatch(a => a.GetPageContent(pageId, pageInfo, xmlSchema));
 
     /// <summary>Saves modified page XML back to OneNote.</summary>
     public void UpdatePageContent(string pageChangesXml, int xmlSchema) =>
-        Dispatch(
-            real => real.UpdatePageContent(pageChangesXml, DateTime.MinValue, (XMLSchema)xmlSchema, true),
-            fake => InvokeFake(fake, "UpdatePageContent",
-                new object?[] { pageChangesXml, DateTime.MinValue, xmlSchema, true }));
+        Dispatch(a => a.UpdatePageContent(pageChangesXml, xmlSchema));
 
     /// <summary>
     /// Opens or creates a hierarchy node. Returns the object ID of the node.
     /// </summary>
     public string OpenHierarchy(string path, string relativeToObjectId, int createFileType) =>
-        Dispatch(
-            real =>
-            {
-                real.OpenHierarchy(path, relativeToObjectId, out var id, (CreateFileType)createFileType);
-                return id;
-            },
-            fake =>
-            {
-                var args = new object?[] { path, relativeToObjectId, string.Empty, createFileType };
-                InvokeFake(fake, "OpenHierarchy", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.OpenHierarchy(path, relativeToObjectId, createFileType));
 
     /// <summary>Publishes a hierarchy node to a file in the given format.</summary>
     public void Publish(string hierarchyId, string targetFilePath, int publishFormat,
         string clsidExporter = "") =>
-        Dispatch(
-            real => real.Publish(hierarchyId, targetFilePath, (PublishFormat)publishFormat, clsidExporter),
-            fake => InvokeFake(fake, "Publish",
-                new object?[] { hierarchyId, targetFilePath, publishFormat, clsidExporter }));
+        Dispatch(a => a.Publish(hierarchyId, targetFilePath, publishFormat, clsidExporter));
 
     /// <summary>Creates a new page in a section. Returns the new page's object ID.</summary>
     public string CreateNewPage(string sectionId, int newPageStyle = OneNoteNewPageStyle.NpsDefault) =>
-        Dispatch(
-            real =>
-            {
-                real.CreateNewPage(sectionId, out var id, (NewPageStyle)newPageStyle);
-                return id;
-            },
-            fake =>
-            {
-                var args = new object?[] { sectionId, string.Empty, newPageStyle };
-                InvokeFake(fake, "CreateNewPage", args);
-                return (string)args[1]!;
-            });
+        Dispatch(a => a.CreateNewPage(sectionId, newPageStyle));
 
     /// <summary>Closes an open notebook. Does not delete files on disk.</summary>
     public void CloseNotebook(string notebookId) =>
-        Dispatch(
-            real => real.CloseNotebook(notebookId),
-            fake => InvokeFake(fake, "CloseNotebook", new object?[] { notebookId }));
+        Dispatch(a => a.CloseNotebook(notebookId));
 
     /// <summary>Deletes a hierarchy node (page/section/notebook) by its object ID. No conflict check.</summary>
     public void DeleteHierarchy(string objectId) =>
-        Dispatch(
-            real => real.DeleteHierarchy(objectId, DateTime.MinValue, true),
-            fake => InvokeFake(fake, "DeleteHierarchy", new object?[] { objectId, DateTime.MinValue, true }));
+        Dispatch(a => a.DeleteHierarchy(objectId));
 
     /// <summary>Applies a hierarchy-change XML fragment (e.g. a renamed node) to OneNote.</summary>
     public void UpdateHierarchy(string changesXml, int xmlSchema) =>
-        Dispatch(
-            real => real.UpdateHierarchy(changesXml, (XMLSchema)xmlSchema),
-            fake => InvokeFake(fake, "UpdateHierarchy", new object?[] { changesXml, xmlSchema }));
-
-    // ── Full IApplication coverage (P-0543) ───────────────────────────────────
-    // QuickFiling is intentionally NOT wrapped: it surfaces the interactive
-    // IQuickFilingDialog modal, which has no headless/automation surface.
-    // OnNavigate/OnHierarchyChange events are out of scope (unsupported in managed
-    // code per MSDN).
+        Dispatch(a => a.UpdateHierarchy(changesXml, xmlSchema));
 
     /// <summary>
     /// Fetches a page's binary object (identified by a callback ID from the page
-    /// XML) as a base64 string. General binary-by-callback retrieval.
+    /// XML) as a base64 string.
     /// </summary>
     public string GetBinaryPageContent(string pageId, string callbackId) =>
-        Dispatch(
-            real =>
-            {
-                real.GetBinaryPageContent(pageId, callbackId, out var b64);
-                return b64;
-            },
-            fake =>
-            {
-                var args = new object?[] { pageId, callbackId, string.Empty };
-                InvokeFake(fake, "GetBinaryPageContent", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.GetBinaryPageContent(pageId, callbackId));
 
     /// <summary>Deletes a single content object (by object ID) from a page.</summary>
     public void DeletePageContent(string pageId, string objectId) =>
-        Dispatch(
-            real => real.DeletePageContent(pageId, objectId, DateTime.MinValue, true),
-            fake => InvokeFake(fake, "DeletePageContent",
-                new object?[] { pageId, objectId, DateTime.MinValue, true }));
+        Dispatch(a => a.DeletePageContent(pageId, objectId));
 
     /// <summary>Returns the object ID of the parent of the given hierarchy node.</summary>
     public string GetHierarchyParent(string objectId) =>
-        Dispatch(
-            real =>
-            {
-                real.GetHierarchyParent(objectId, out var parentId);
-                return parentId;
-            },
-            fake =>
-            {
-                var args = new object?[] { objectId, string.Empty };
-                InvokeFake(fake, "GetHierarchyParent", args);
-                return (string)args[1]!;
-            });
+        Dispatch(a => a.GetHierarchyParent(objectId));
 
     /// <summary>
     /// Returns the filesystem path of a OneNote special location
     /// (backup folder, unfiled-notes section, or default notebook folder).
     /// </summary>
     public string GetSpecialLocation(int specialLocation) =>
-        Dispatch(
-            real =>
-            {
-                real.GetSpecialLocation((SpecialLocation)specialLocation, out var path);
-                return path;
-            },
-            fake =>
-            {
-                var args = new object?[] { specialLocation, string.Empty };
-                InvokeFake(fake, "GetSpecialLocation", args);
-                return (string)args[1]!;
-            });
+        Dispatch(a => a.GetSpecialLocation(specialLocation));
 
     /// <summary>Navigates the OneNote UI to a hierarchy node and optional object.</summary>
     public void NavigateTo(string hierarchyObjectId, string objectId = "", bool newWindow = false) =>
-        Dispatch(
-            real => real.NavigateTo(hierarchyObjectId, objectId, newWindow),
-            fake => InvokeFake(fake, "NavigateTo",
-                new object?[] { hierarchyObjectId, objectId, newWindow }));
+        Dispatch(a => a.NavigateTo(hierarchyObjectId, objectId, newWindow));
 
     /// <summary>Navigates the OneNote UI to a onenote: URL.</summary>
     public void NavigateToUrl(string url, bool newWindow = false) =>
-        Dispatch(
-            real => real.NavigateToUrl(url, newWindow),
-            fake => InvokeFake(fake, "NavigateToUrl", new object?[] { url, newWindow }));
+        Dispatch(a => a.NavigateToUrl(url, newWindow));
 
     /// <summary>Returns a onenote: hyperlink to a hierarchy node (and optional page object).</summary>
     public string GetHyperlinkToObject(string hierarchyId, string pageContentObjectId = "") =>
-        Dispatch(
-            real =>
-            {
-                real.GetHyperlinkToObject(hierarchyId, pageContentObjectId, out var link);
-                return link;
-            },
-            fake =>
-            {
-                var args = new object?[] { hierarchyId, pageContentObjectId, string.Empty };
-                InvokeFake(fake, "GetHyperlinkToObject", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.GetHyperlinkToObject(hierarchyId, pageContentObjectId));
 
     /// <summary>Returns a web (https) hyperlink to a hierarchy node (and optional page object).</summary>
     public string GetWebHyperlinkToObject(string hierarchyId, string pageContentObjectId = "") =>
-        Dispatch(
-            real =>
-            {
-                real.GetWebHyperlinkToObject(hierarchyId, pageContentObjectId, out var link);
-                return link;
-            },
-            fake =>
-            {
-                var args = new object?[] { hierarchyId, pageContentObjectId, string.Empty };
-                InvokeFake(fake, "GetWebHyperlinkToObject", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.GetWebHyperlinkToObject(hierarchyId, pageContentObjectId));
 
     /// <summary>
     /// Searches page metadata by name and returns hierarchy XML of matching pages.
     /// Pass empty <paramref name="startNodeId"/> to search from the root.
     /// </summary>
     public string FindMeta(string searchName, int xmlSchema, string startNodeId = "") =>
-        Dispatch(
-            real =>
-            {
-                real.FindMeta(startNodeId, searchName, out var xml, false, (XMLSchema)xmlSchema);
-                return xml;
-            },
-            fake =>
-            {
-                var args = new object?[] { startNodeId, searchName, string.Empty, false, xmlSchema };
-                InvokeFake(fake, "FindMeta", args);
-                return (string)args[2]!;
-            });
+        Dispatch(a => a.FindMeta(searchName, xmlSchema, startNodeId));
 
     /// <summary>Three-way merges OneNote files (base/client/server) into a target file.</summary>
     public void MergeFiles(string baseFile, string clientFile, string serverFile, string targetFile) =>
-        Dispatch(
-            real => real.MergeFiles(baseFile, clientFile, serverFile, targetFile),
-            fake => InvokeFake(fake, "MergeFiles",
-                new object?[] { baseFile, clientFile, serverFile, targetFile }));
+        Dispatch(a => a.MergeFiles(baseFile, clientFile, serverFile, targetFile));
 
     /// <summary>Merges the pages of a source section into a destination section.</summary>
     public void MergeSections(string sourceId, string destId) =>
-        Dispatch(
-            real => real.MergeSections(sourceId, destId),
-            fake => InvokeFake(fake, "MergeSections", new object?[] { sourceId, destId }));
+        Dispatch(a => a.MergeSections(sourceId, destId));
 
     /// <summary>Forces a sync of the given hierarchy node (notebook/section).</summary>
     public void SyncHierarchy(string hierarchyId) =>
-        Dispatch(
-            real => real.SyncHierarchy(hierarchyId),
-            fake => InvokeFake(fake, "SyncHierarchy", new object?[] { hierarchyId }));
+        Dispatch(a => a.SyncHierarchy(hierarchyId));
 
     /// <summary>
     /// Sets the section OneNote files a given kind of Outlook item into
     /// (e-mail, contacts, tasks, …).
     /// </summary>
     public void SetFilingLocation(int filingLocation, int filingLocationType, string sectionId) =>
-        Dispatch(
-            real => real.SetFilingLocation(
-                (FilingLocation)filingLocation, (FilingLocationType)filingLocationType, sectionId),
-            fake => InvokeFake(fake, "SetFilingLocation",
-                new object?[] { filingLocation, filingLocationType, sectionId }));
+        Dispatch(a => a.SetFilingLocation(filingLocation, filingLocationType, sectionId));
 
     /// <inheritdoc/>
     public void Dispose() => _lock.Dispose();

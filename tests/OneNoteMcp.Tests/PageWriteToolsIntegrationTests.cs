@@ -28,7 +28,7 @@ public sealed class PageWriteToolsIntegrationTests
         if (!_fx.Available) return;
 
         var title = "Scratch Create " + Guid.NewGuid().ToString("N");
-        var pageId = PageWriteTools.CreatePage(_fx.SectionId, title);
+        var pageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, _fx.SectionId, title);
         try
         {
             Assert.False(string.IsNullOrEmpty(pageId));
@@ -36,7 +36,7 @@ public sealed class PageWriteToolsIntegrationTests
         }
         finally
         {
-            PageWriteTools.DeletePage(pageId);
+            PageWriteTools.DeletePage(FixtureNotebook.TestVersion, pageId);
         }
     }
 
@@ -45,28 +45,28 @@ public sealed class PageWriteToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var pageId = PageWriteTools.CreatePage(_fx.SectionId);
+        var pageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, _fx.SectionId);
         try
         {
             // Seed the page with a title we keep and a body run we will mutate.
-            PageWriteTools.UpdatePage(BuildPageXml(pageId, "Keep This Title", "old-body-value"));
+            PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, BuildPageXml(pageId, "Keep This Title", "old-body-value"));
 
-            var before = PageReadTools.GetPage(pageId, "basic");
+            var before = PageReadTools.GetPage(FixtureNotebook.TestVersion, pageId, "basic");
             Assert.Contains("old-body-value", before);
 
             // Mutate only the body run in the fetched XML, then write it back.
             var mutated = before.Replace("old-body-value", "new-body-value");
             Assert.Contains("new-body-value", mutated); // guard: the replace actually changed the fetched XML
-            PageWriteTools.UpdatePage(mutated);
+            PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, mutated);
 
-            var after = PageReadTools.GetPage(pageId, "basic");
+            var after = PageReadTools.GetPage(FixtureNotebook.TestVersion, pageId, "basic");
             Assert.Contains("new-body-value", after);       // mutation applied
             Assert.DoesNotContain("old-body-value", after);  // old value gone
             Assert.Contains("Keep This Title", after);       // untouched content preserved
         }
         finally
         {
-            PageWriteTools.DeletePage(pageId);
+            PageWriteTools.DeletePage(FixtureNotebook.TestVersion, pageId);
         }
     }
 
@@ -75,26 +75,26 @@ public sealed class PageWriteToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var pageId = PageWriteTools.CreatePage(_fx.SectionId, "Scratch Delete " + Guid.NewGuid().ToString("N"));
+        var pageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, _fx.SectionId, "Scratch Delete " + Guid.NewGuid().ToString("N"));
         try
         {
             Assert.Contains(SectionPages(), p => p.Id == pageId); // present after create
 
-            PageWriteTools.DeletePage(pageId);
+            PageWriteTools.DeletePage(FixtureNotebook.TestVersion, pageId);
 
             Assert.DoesNotContain(SectionPages(), p => p.Id == pageId); // gone after delete
         }
         finally
         {
             // Best-effort cleanup if an assertion above aborted before the delete.
-            try { PageWriteTools.DeletePage(pageId); } catch { /* already deleted */ }
+            try { PageWriteTools.DeletePage(FixtureNotebook.TestVersion, pageId); } catch { /* already deleted */ }
         }
     }
 
     /// <summary>Reads the current pages under the fixture section from live hierarchy XML.</summary>
     private IReadOnlyList<PageMatch> SectionPages()
     {
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             _fx.SectionId, OneNoteScope.HsPages, OneNoteXmlSchema.Xs2013);
         return HierarchyParser.ParsePages(xml);
     }

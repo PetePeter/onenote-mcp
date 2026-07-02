@@ -65,43 +65,43 @@ public sealed class PageLifecycleUatTests
         try
         {
             // 1. CreateSection -> the new section appears in the notebook hierarchy.
-            sectionId = SectionTools.CreateSection(_fx.NotebookId, sectionName);
+            sectionId = SectionTools.CreateSection(FixtureNotebook.TestVersion, _fx.NotebookId, sectionName);
             Assert.False(string.IsNullOrEmpty(sectionId), "CreateSection must return an object ID");
             Assert.Contains(NotebookSections(), s => s.Id == sectionId && s.Name == sectionName);
 
             // 2. CreatePage with a title -> the new page appears under the section.
-            textPageId = PageWriteTools.CreatePage(sectionId, pageTitle);
+            textPageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, sectionId, pageTitle);
             Assert.False(string.IsNullOrEmpty(textPageId), "CreatePage must return an object ID");
             Assert.Contains(SectionPages(sectionId), p => p.Id == textPageId);
 
             // 3. GetPageInfo reads back step 2's write: the title matches.
-            var infoJson = PageReadTools.GetPageInfo(textPageId);
+            var infoJson = PageReadTools.GetPageInfo(FixtureNotebook.TestVersion, textPageId);
             var info = JsonSerializer.Deserialize<PageMetadata>(infoJson, JsonOpts)!;
             Assert.Equal(pageTitle, info.Title);
 
             // 4. UpdatePage mutates one body text run, keeping the title. Seed an
             //    "original" run first, read it back, then mutate it to a new value.
-            PageWriteTools.UpdatePage(BuildPageXml(textPageId, pageTitle, "uat-run-original"));
+            PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, BuildPageXml(textPageId, pageTitle, "uat-run-original"));
 
-            var seeded = PageReadTools.GetPage(textPageId, "all");
+            var seeded = PageReadTools.GetPage(FixtureNotebook.TestVersion, textPageId, "all");
             Assert.Contains("uat-run-original", seeded); // reads back the seeded write
 
             var mutated = seeded.Replace("uat-run-original", "uat-run-mutated");
             Assert.Contains("uat-run-mutated", mutated); // guard: the replace changed the fetched XML
-            PageWriteTools.UpdatePage(mutated);
+            PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, mutated);
 
             // 5. GetPage(all) reads back step 4: mutation present AND title preserved.
-            var after = PageReadTools.GetPage(textPageId, "all");
+            var after = PageReadTools.GetPage(FixtureNotebook.TestVersion, textPageId, "all");
             Assert.Contains("uat-run-mutated", after);        // mutation applied
             Assert.DoesNotContain("uat-run-original", after);  // old value gone
             Assert.Contains(pageTitle, after);                 // original title preserved
 
             // 6. ExtractPageFiles on a page seeded with a known PNG -> a decodable
             //    PNG lands on disk at an absolute path with the PNG magic bytes.
-            imagePageId = PageWriteTools.CreatePage(sectionId, "UAT Image " + suffix);
-            PageWriteTools.UpdatePage(BuildImagePageXml(imagePageId));
+            imagePageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, sectionId, "UAT Image " + suffix);
+            PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, BuildImagePageXml(imagePageId));
 
-            var extractJson = FileExtractionTools.ExtractPageFiles(imagePageId, outDir, "images");
+            var extractJson = FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, imagePageId, outDir, "images");
             var files = JsonSerializer.Deserialize<List<ExtractedFile>>(extractJson, JsonOpts)!;
             var file = Assert.Single(files);
             Assert.Equal("image", file.Type);
@@ -111,19 +111,19 @@ public sealed class PageLifecycleUatTests
 
             // 7. RenameNode -> the hierarchy reflects the new section name.
             var renamedName = "UAT Renamed " + suffix;
-            SectionTools.RenameNode(sectionId, renamedName);
+            SectionTools.RenameNode(FixtureNotebook.TestVersion, sectionId, renamedName);
             Assert.Contains(NotebookSections(), s => s.Id == sectionId && s.Name == renamedName);
 
             // 8. DeletePage -> the text page is gone from the section hierarchy.
-            PageWriteTools.DeletePage(textPageId);
+            PageWriteTools.DeletePage(FixtureNotebook.TestVersion, textPageId);
             Assert.DoesNotContain(SectionPages(sectionId), p => p.Id == textPageId);
             var deletedTextPageId = textPageId;
             textPageId = null; // already deleted; skip the finally cleanup
 
             // 9. DeleteNode -> the section is gone from the notebook hierarchy.
-            PageWriteTools.DeletePage(imagePageId);
+            PageWriteTools.DeletePage(FixtureNotebook.TestVersion, imagePageId);
             imagePageId = null;
-            SectionTools.DeleteNode(sectionId);
+            SectionTools.DeleteNode(FixtureNotebook.TestVersion, sectionId);
             Assert.DoesNotContain(NotebookSections(), s => s.Id == sectionId);
             var deletedSectionId = sectionId;
             sectionId = null; // already deleted; skip the finally cleanup
@@ -135,11 +135,11 @@ public sealed class PageLifecycleUatTests
             // Best-effort teardown if an assertion aborted mid-lifecycle. Deleting
             // the section also removes any pages still under it.
             if (imagePageId is not null)
-                try { PageWriteTools.DeletePage(imagePageId); } catch { /* already gone */ }
+                try { PageWriteTools.DeletePage(FixtureNotebook.TestVersion, imagePageId); } catch { /* already gone */ }
             if (textPageId is not null)
-                try { PageWriteTools.DeletePage(textPageId); } catch { /* already gone */ }
+                try { PageWriteTools.DeletePage(FixtureNotebook.TestVersion, textPageId); } catch { /* already gone */ }
             if (sectionId is not null)
-                try { SectionTools.DeleteNode(sectionId); } catch { /* already gone */ }
+                try { SectionTools.DeleteNode(FixtureNotebook.TestVersion, sectionId); } catch { /* already gone */ }
             if (Directory.Exists(outDir))
                 try { Directory.Delete(outDir, recursive: true); } catch { /* harmless leftovers */ }
         }
@@ -148,7 +148,7 @@ public sealed class PageLifecycleUatTests
     /// <summary>Reads the current sections under the fixture notebook from live hierarchy XML.</summary>
     private IReadOnlyList<(string Id, string Name)> NotebookSections()
     {
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             _fx.NotebookId, OneNoteScope.HsSections, OneNoteXmlSchema.Xs2013);
 
         var root = XDocument.Parse(xml).Root;
@@ -165,7 +165,7 @@ public sealed class PageLifecycleUatTests
     /// <summary>Reads the current pages under a section from live hierarchy XML.</summary>
     private static IReadOnlyList<PageMatch> SectionPages(string sectionId)
     {
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             sectionId, OneNoteScope.HsPages, OneNoteXmlSchema.Xs2013);
         return HierarchyParser.ParsePages(xml);
     }

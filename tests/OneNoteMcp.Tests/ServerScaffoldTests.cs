@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Server;
 using OneNoteMcp;
+using OneNoteMcp.Tests.Fixtures;
 using OneNoteMcp.Tools;
 using Xunit;
 
@@ -55,6 +56,7 @@ public class ServerScaffoldTests
                 "onenote_get_special_location",
                 "onenote_get_web_hyperlink_to_object",
                 "onenote_list_notebooks",
+                "onenote_list_versions",
                 "onenote_merge_files",
                 "onenote_merge_sections",
                 "onenote_navigate_to",
@@ -71,7 +73,7 @@ public class ServerScaffoldTests
     [Fact]
     public void Diagnostics_reports_server_version()
     {
-        var result = DiagnosticsTool.OneNoteDiagnostics();
+        var result = DiagnosticsTool.OneNoteDiagnostics(FixtureNotebook.TestVersion);
 
         Assert.StartsWith("OneNoteMcp server ", result);
         Assert.False(string.IsNullOrWhiteSpace(DiagnosticsTool.ServerVersion));

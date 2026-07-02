@@ -22,35 +22,39 @@ public static class PageWriteTools
     [McpServerTool(Name = "onenote_create_page")]
     [Description("Creates a new page in a section and optionally sets its title. Returns the new page's object ID.")]
     public static string CreatePage(
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the section to create the page in.")] string sectionId,
-        [Description("Optional page title.")] string? title = null) => ToolError.Guard(() =>
-    {
-        var pageId = OneNoteSession.Instance.CreateNewPage(sectionId);
-
-        if (!string.IsNullOrEmpty(title))
-            OneNoteSession.Instance.UpdatePageContent(BuildTitleXml(pageId, title), OneNoteXmlSchema.Xs2013);
-
-        return pageId;
-    });
+        [Description("Optional page title.")] string? title = null) =>
+        ToolVersion.Guarded(version, Capability.CreateNewPage, s =>
+        {
+            var pageId = s.CreateNewPage(sectionId);
+            if (!string.IsNullOrEmpty(title))
+                s.UpdatePageContent(BuildTitleXml(pageId, title), OneNoteXmlSchema.Xs2013);
+            return pageId;
+        });
 
     [McpServerTool(Name = "onenote_update_page")]
     [Description("Writes full OneNote page XML back to a page, applying the changes it carries.")]
     public static string UpdatePage(
-        [Description("Full OneNote page XML (root <one:Page> carrying the page ID) to write.")] string pageXml) => ToolError.Guard(() =>
-    {
-        PageXmlValidator.Validate(pageXml);
-        OneNoteSession.Instance.UpdatePageContent(pageXml, OneNoteXmlSchema.Xs2013);
-        return "{\"updated\":true}";
-    });
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("Full OneNote page XML (root <one:Page> carrying the page ID) to write.")] string pageXml) =>
+        ToolVersion.Guarded(version, Capability.UpdatePageContent, s =>
+        {
+            PageXmlValidator.Validate(pageXml);
+            s.UpdatePageContent(pageXml, OneNoteXmlSchema.Xs2013);
+            return "{\"updated\":true}";
+        });
 
     [McpServerTool(Name = "onenote_delete_page")]
     [Description("Deletes a OneNote page by its object ID.")]
     public static string DeletePage(
-        [Description("OneNote object ID of the page to delete.")] string pageId) => ToolError.Guard(() =>
-    {
-        OneNoteSession.Instance.DeleteHierarchy(pageId);
-        return "{\"deleted\":true}";
-    });
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("OneNote object ID of the page to delete.")] string pageId) =>
+        ToolVersion.Guarded(version, Capability.DeleteHierarchy, s =>
+        {
+            s.DeleteHierarchy(pageId);
+            return "{\"deleted\":true}";
+        });
 
     /// <summary>
     /// Builds minimal page XML that sets just the title for a page ID. Built with

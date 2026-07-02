@@ -31,6 +31,7 @@ public static class ExportTools
     [McpServerTool(Name = "onenote_export_pdf")]
     [Description("Exports a OneNote page or section to PDF via the Publish API. mode 'single' writes one PDF to outputPath (a file path); mode 'perPage' writes one PDF per page into outputPath (a directory). Returns a JSON array of the produced file paths.")]
     public static string ExportPdf(
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the page or section to export.")] string nodeId,
         [Description("For mode 'single': the target .pdf file path. For mode 'perPage': the target directory (created if missing).")] string outputPath,
         [Description("'single' (one PDF for the whole node) or 'perPage' (one PDF per page under the node).")] string mode = "single",
@@ -42,28 +43,38 @@ public static class ExportTools
         if (normalized != "single" && normalized != "perpage")
             throw new ArgumentException($"Unknown mode '{mode}'. Expected 'single' or 'perPage'.", nameof(mode));
 
+        var session = ToolVersion.Route(version, Capability.Publish);
+
         return normalized == "single"
-            ? ExportSingle(nodeId, outputPath)
-            : ExportPerPage(nodeId, outputPath, interPublishDelayMs);
+            ? ExportSingle(session, nodeId, outputPath)
+            : ExportPerPage(session, nodeId, outputPath, interPublishDelayMs);
     }
 
     /// <summary>Publishes the whole node to a single PDF file.</summary>
-    private static string ExportSingle(string nodeId, string outputPath)
-        => PublishNode(nodeId, outputPath, OneNotePublishFormat.PfPdf);
+    private static string ExportSingle(OneNoteSession session, string nodeId, string outputPath)
+        => PublishNode(session, nodeId, outputPath, OneNotePublishFormat.PfPdf);
 
     [McpServerTool(Name = "onenote_export_one")]
     [Description("Exports a OneNote section to a .one file via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
     public static string ExportOne(
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the section to export.")] string sectionId,
         [Description("Target .one file path.")] string outputPath)
-        => PublishNode(sectionId, outputPath, OneNotePublishFormat.PfOneNote);
+    {
+        var session = ToolVersion.Route(version, Capability.Publish);
+        return PublishNode(session, sectionId, outputPath, OneNotePublishFormat.PfOneNote);
+    }
 
     [McpServerTool(Name = "onenote_export_onepkg")]
     [Description("Exports a whole OneNote notebook to a .onepkg package (a Windows cabinet) via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
     public static string ExportOnepkg(
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the notebook to export.")] string notebookId,
         [Description("Target .onepkg file path.")] string outputPath)
-        => PublishNode(notebookId, outputPath, OneNotePublishFormat.PfOneNotePackage);
+    {
+        var session = ToolVersion.Route(version, Capability.Publish);
+        return PublishNode(session, notebookId, outputPath, OneNotePublishFormat.PfOneNotePackage);
+    }
 
     // Package publishes (.one/.onepkg) flush the file asynchronously — Publish can
     // return before OneNote finishes writing — so we wait for the file to appear.
@@ -75,7 +86,7 @@ public static class ExportTools
     /// ensure the parent directory exists, clear any stale target (Publish refuses
     /// to overwrite), then publish, wait for the file to materialise, and report it.
     /// </summary>
-    private static string PublishNode(string nodeId, string outputPath, int publishFormat)
+    private static string PublishNode(OneNoteSession session, string nodeId, string outputPath, int publishFormat)
     {
         var fullPath = Path.GetFullPath(outputPath);
 
@@ -84,7 +95,7 @@ public static class ExportTools
             Directory.CreateDirectory(parent); // propagates on invalid drives
 
         DeleteIfExists(fullPath);
-        OneNoteSession.Instance.Publish(nodeId, fullPath, publishFormat);
+        session.Publish(nodeId, fullPath, publishFormat);
         WaitForFile(fullPath);
 
         return JsonSerializer.Serialize(new[] { fullPath });
@@ -127,12 +138,12 @@ public static class ExportTools
     }
 
     /// <summary>Publishes each page under the node to its own PDF in a directory.</summary>
-    private static string ExportPerPage(string nodeId, string outputPath, int interPublishDelayMs)
+    private static string ExportPerPage(OneNoteSession session, string nodeId, string outputPath, int interPublishDelayMs)
     {
         Directory.CreateDirectory(outputPath);
         var resolvedDir = Path.GetFullPath(outputPath);
 
-        var xml = OneNoteSession.Instance.GetHierarchy(nodeId, OneNoteScope.HsPages, OneNoteXmlSchema.Xs2013);
+        var xml = session.GetHierarchy(nodeId, OneNoteScope.HsPages, OneNoteXmlSchema.Xs2013);
         var pages = HierarchyParser.ParsePages(xml);
         if (pages.Count == 0)
             return JsonSerializer.Serialize(Array.Empty<string>());
@@ -152,7 +163,7 @@ public static class ExportTools
                 throw new InvalidOperationException($"Derived path '{fullPath}' escapes outputPath.");
 
             DeleteIfExists(fullPath);
-            OneNoteSession.Instance.Publish(page.Id, fullPath, OneNotePublishFormat.PfPdf);
+            session.Publish(page.Id, fullPath, OneNotePublishFormat.PfPdf);
             written.Add(fullPath);
             index++;
         }

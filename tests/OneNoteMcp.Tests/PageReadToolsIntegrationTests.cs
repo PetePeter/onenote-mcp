@@ -27,7 +27,7 @@ public sealed class PageReadToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var xml = PageReadTools.GetPage(_fx.TextPageId, "basic");
+        var xml = PageReadTools.GetPage(FixtureNotebook.TestVersion, _fx.TextPageId, "basic");
 
         Assert.Contains(_fx.KnownText, xml);
     }
@@ -37,7 +37,7 @@ public sealed class PageReadToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var xml = PageReadTools.GetPage(_fx.ImagePageId, "all");
+        var xml = PageReadTools.GetPage(FixtureNotebook.TestVersion, _fx.ImagePageId, "all");
 
         Assert.Contains("Image", xml);
         Assert.Contains("Data", xml);
@@ -48,7 +48,7 @@ public sealed class PageReadToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var json = PageReadTools.GetPageInfo(_fx.TextPageId);
+        var json = PageReadTools.GetPageInfo(FixtureNotebook.TestVersion, _fx.TextPageId);
         var meta = JsonSerializer.Deserialize<PageMetadata>(json, JsonOpts)!;
 
         Assert.Equal(_fx.KnownTitle, meta.Title);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace OneNoteMcp.Interop;
@@ -118,9 +119,22 @@ public static class ComErrorMapper
     }
 
     /// <summary>
-    /// Describes an exception: COM exceptions are mapped by HRESULT; any other
-    /// exception surfaces its own message unchanged.
+    /// Describes an exception: NotSupportedInVersionException gets a version-aware
+    /// message; COM exceptions are mapped by HRESULT; any other exception surfaces
+    /// its own message unchanged.
     /// </summary>
-    public static string Describe(Exception ex) =>
-        ex is COMException com ? Describe(com.HResult) : ex.Message;
+    public static string Describe(Exception ex) => ex switch
+    {
+        NotSupportedInVersionException nsv => DescribeUnsupported(nsv),
+        COMException com => Describe(com.HResult),
+        _ => ex.Message,
+    };
+
+    private static string DescribeUnsupported(NotSupportedInVersionException ex)
+    {
+        var display = OneNoteVersionCatalog.All
+            .FirstOrDefault(k => k.Major == ex.VersionMajor)?.DisplayName
+            ?? ex.VersionMajor.ToString();
+        return $"Unsupported on OneNote {display}: '{ex.MethodName}' is not available in this version.";
+    }
 }

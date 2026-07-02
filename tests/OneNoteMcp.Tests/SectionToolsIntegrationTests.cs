@@ -28,7 +28,7 @@ public sealed class SectionToolsIntegrationTests
         if (!_fx.Available) return;
 
         var name = "Scratch Section " + Guid.NewGuid().ToString("N");
-        var id = SectionTools.CreateSection(_fx.NotebookId, name);
+        var id = SectionTools.CreateSection(FixtureNotebook.TestVersion, _fx.NotebookId, name);
         try
         {
             Assert.False(string.IsNullOrEmpty(id));
@@ -36,7 +36,7 @@ public sealed class SectionToolsIntegrationTests
         }
         finally
         {
-            SectionTools.DeleteNode(id);
+            SectionTools.DeleteNode(FixtureNotebook.TestVersion, id);
         }
     }
 
@@ -45,17 +45,17 @@ public sealed class SectionToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var id = SectionTools.CreateSection(_fx.NotebookId, "Scratch Section " + Guid.NewGuid().ToString("N"));
+        var id = SectionTools.CreateSection(FixtureNotebook.TestVersion, _fx.NotebookId, "Scratch Section " + Guid.NewGuid().ToString("N"));
         try
         {
             var newName = "Renamed " + Guid.NewGuid().ToString("N");
-            SectionTools.RenameNode(id, newName);
+            SectionTools.RenameNode(FixtureNotebook.TestVersion, id, newName);
 
             Assert.Contains(NotebookSections(), s => s.Id == id && s.Name == newName);
         }
         finally
         {
-            SectionTools.DeleteNode(id);
+            SectionTools.DeleteNode(FixtureNotebook.TestVersion, id);
         }
     }
 
@@ -64,19 +64,19 @@ public sealed class SectionToolsIntegrationTests
     {
         if (!_fx.Available) return;
 
-        var id = SectionTools.CreateSection(_fx.NotebookId, "Scratch Section " + Guid.NewGuid().ToString("N"));
+        var id = SectionTools.CreateSection(FixtureNotebook.TestVersion, _fx.NotebookId, "Scratch Section " + Guid.NewGuid().ToString("N"));
         try
         {
             Assert.Contains(NotebookSections(), s => s.Id == id); // present after create
 
-            SectionTools.DeleteNode(id);
+            SectionTools.DeleteNode(FixtureNotebook.TestVersion, id);
 
             Assert.DoesNotContain(NotebookSections(), s => s.Id == id); // gone after delete
         }
         finally
         {
             // Best-effort cleanup if an assertion above aborted before the delete.
-            try { SectionTools.DeleteNode(id); } catch { /* already deleted */ }
+            try { SectionTools.DeleteNode(FixtureNotebook.TestVersion, id); } catch { /* already deleted */ }
         }
     }
 
@@ -88,7 +88,7 @@ public sealed class SectionToolsIntegrationTests
         // A well-formed but non-existent object ID must NOT throw: the tool routes
         // the COM failure through the central mapper and returns a human-readable
         // error string as its result (errors-in-tool-results design).
-        var result = SectionTools.DeleteNode("{00000000-0000-0000-0000-000000000000}{1}{B0}");
+        var result = SectionTools.DeleteNode(FixtureNotebook.TestVersion, "{00000000-0000-0000-0000-000000000000}{1}{B0}");
 
         Assert.Contains("OneNote error", result, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"deleted\":true", result); // not a success payload
@@ -97,7 +97,7 @@ public sealed class SectionToolsIntegrationTests
     /// <summary>Reads the current sections under the fixture notebook from live hierarchy XML.</summary>
     private IReadOnlyList<(string Id, string Name)> NotebookSections()
     {
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             _fx.NotebookId, OneNoteScope.HsSections, OneNoteXmlSchema.Xs2013);
 
         var root = XDocument.Parse(xml).Root;

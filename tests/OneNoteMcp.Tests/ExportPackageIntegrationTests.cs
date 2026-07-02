@@ -36,7 +36,7 @@ public sealed class ExportPackageIntegrationTests
         var target = ScratchFile("one");
         try
         {
-            var json = ExportTools.ExportOne(_fx.SectionId, target);
+            var json = ExportTools.ExportOne(FixtureNotebook.TestVersion, _fx.SectionId, target);
 
             var paths = Deserialize(json);
             Assert.Single(paths);
@@ -59,7 +59,7 @@ public sealed class ExportPackageIntegrationTests
         File.WriteAllText(target, "not a .one file");
         try
         {
-            ExportTools.ExportOne(_fx.SectionId, target);
+            ExportTools.ExportOne(FixtureNotebook.TestVersion, _fx.SectionId, target);
             AssertNonEmptyFile(target);
             // A real .one is far larger than our 15-byte placeholder.
             Assert.True(new FileInfo(target).Length > 100, "Expected a real .one file, not the placeholder.");
@@ -81,7 +81,7 @@ public sealed class ExportPackageIntegrationTests
         var target = ScratchFile("onepkg");
         try
         {
-            var json = ExportTools.ExportOnepkg(_fx.NotebookId, target);
+            var json = ExportTools.ExportOnepkg(FixtureNotebook.TestVersion, _fx.NotebookId, target);
 
             var paths = Deserialize(json);
             Assert.Single(paths);
@@ -94,14 +94,6 @@ public sealed class ExportPackageIntegrationTests
         }
     }
 
-    // NOTE: there is deliberately no onepkg "overwrite" test. Publishing the same
-    // notebook to a package twice in quick succession wedges OneNote (the second
-    // publish silently produces nothing) — the same "don't hammer Publish" quirk
-    // that shapes PDF perPage mode. The overwrite path (DeleteIfExists in the shared
-    // PublishNode helper) is already covered by ExportOne_ExistingTarget_IsOverwritten
-    // and ExportPdf_SingleMode_ExistingTargetIsOverwritten, which exercise the exact
-    // same code, so a redundant back-to-back package publish would only add flakiness.
-
     [Fact]
     public void ExportOne_InvalidTargetPath_ThrowsWithoutCrashing()
     {
@@ -109,7 +101,7 @@ public sealed class ExportPackageIntegrationTests
 
         // An embedded null makes an illegal path deterministically across machines.
         var illegalPath = Path.Combine(Path.GetTempPath(), "onenote-mcp\0nodir", "x.one");
-        Assert.ThrowsAny<Exception>(() => ExportTools.ExportOne(_fx.SectionId, illegalPath));
+        Assert.ThrowsAny<Exception>(() => ExportTools.ExportOne(FixtureNotebook.TestVersion, _fx.SectionId, illegalPath));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────

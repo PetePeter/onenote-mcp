@@ -34,11 +34,11 @@ public sealed class NotebookToolsIntegrationTests
         string? id = null;
         try
         {
-            id = NotebookTools.CreateNotebook(scratchDir);
+            id = NotebookTools.CreateNotebook(FixtureNotebook.TestVersion, scratchDir);
 
             Assert.Contains(OpenNotebooks(), n => n.Id == id); // present after create
 
-            NotebookTools.CloseNotebook(id);
+            NotebookTools.CloseNotebook(FixtureNotebook.TestVersion, id);
 
             Assert.DoesNotContain(OpenNotebooks(), n => n.Id == id); // gone after close
         }
@@ -46,7 +46,7 @@ public sealed class NotebookToolsIntegrationTests
         {
             if (id is not null)
             {
-                try { NotebookTools.CloseNotebook(id); } catch { /* already closed */ }
+                try { NotebookTools.CloseNotebook(FixtureNotebook.TestVersion, id); } catch { /* already closed */ }
             }
             try { Directory.Delete(scratchDir, recursive: true); } catch { /* best-effort */ }
         }
@@ -55,7 +55,7 @@ public sealed class NotebookToolsIntegrationTests
     /// <summary>Reads the currently open notebooks from live hierarchy XML.</summary>
     private static System.Collections.Generic.IReadOnlyList<NotebookInfo> OpenNotebooks()
     {
-        var xml = OneNoteSession.Instance.GetHierarchy(
+        var xml = OneNoteSession.For(FixtureNotebook.TestClsid).GetHierarchy(
             "", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013);
         return HierarchyParser.ParseNotebooks(xml);
     }

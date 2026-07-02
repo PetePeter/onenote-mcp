@@ -27,7 +27,9 @@ public static class DiagnosticsTool
 {
     [McpServerTool(Name = "onenote_diagnostics")]
     [Description("Returns OneNote MCP server diagnostics including server version, detected OneNote version, running state, open notebook count, and last error.")]
-    public static string OneNoteDiagnostics() => Format(Collect());
+    public static string OneNoteDiagnostics(
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version) =>
+        Format(Collect(version));
 
     /// <summary>
     /// Renders a diagnostics snapshot to a single stable line. Pure: no process or
@@ -41,7 +43,7 @@ public static class DiagnosticsTool
     /// already running and COM is available, so it never launches OneNote or trips
     /// the first-run modal dialog.
     /// </summary>
-    private static DiagnosticsInfo Collect()
+    private static DiagnosticsInfo Collect(string version)
     {
         var oneNoteVersion = OneNoteVersion.Detect()?.DisplayName ?? "not detected";
         var running = System.Diagnostics.Process.GetProcessesByName("ONENOTE").Length > 0;
@@ -49,11 +51,15 @@ public static class DiagnosticsTool
         int? openNotebookCount = null;
         string? probeError = null;
 
-        if (running && OneNoteSession.IsComAvailable)
+        // Defensively resolve the version — a bad token must not crash diagnostics.
+        string? clsid = null;
+        try { (clsid, _) = ToolVersion.Resolve(version); } catch { /* leave clsid null */ }
+
+        if (running && OneNoteSession.IsComAvailable && clsid is not null)
         {
             try
             {
-                var xml = OneNoteSession.Instance.GetHierarchy(
+                var xml = OneNoteSession.For(clsid).GetHierarchy(
                     "", OneNoteScope.HsNotebooks, OneNoteXmlSchema.Xs2013);
                 openNotebookCount = HierarchyParser.ParseNotebooks(xml).Count;
             }
