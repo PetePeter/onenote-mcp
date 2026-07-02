@@ -13,9 +13,10 @@ using OneNoteMcp.Model;
 namespace OneNoteMcp.Tools;
 
 /// <summary>
-/// Exports OneNote pages and sections to PDF via the Publish API. In "single"
-/// mode the whole node is published to one PDF; in "perPage" mode each page under
-/// the node is published to its own PDF in a target directory.
+/// Exports OneNote content via the Publish API: pages and sections to PDF (in
+/// "single" mode the whole node is published to one PDF, in "perPage" mode each
+/// page under the node is published to its own PDF in a target directory), a
+/// section to a .one file, and a whole notebook to a .onepkg package.
 /// Two OneNote gotchas shape this code: Publish fails when the target file already
 /// exists (so we delete first), and OneNote can wedge when publishes are hammered
 /// (so perPage mode sleeps between successive publishes).
@@ -48,6 +49,33 @@ public static class ExportTools
 
     /// <summary>Publishes the whole node to a single PDF file.</summary>
     private static string ExportSingle(string nodeId, string outputPath)
+        => PublishNode(nodeId, outputPath, OneNotePublishFormat.PfPdf);
+
+    [McpServerTool(Name = "onenote_export_one")]
+    [Description("Exports a OneNote section to a .one file via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
+    public static string ExportOne(
+        [Description("OneNote object ID of the section to export.")] string sectionId,
+        [Description("Target .one file path.")] string outputPath)
+        => PublishNode(sectionId, outputPath, OneNotePublishFormat.PfOneNote);
+
+    [McpServerTool(Name = "onenote_export_onepkg")]
+    [Description("Exports a whole OneNote notebook to a .onepkg package (a Windows cabinet) via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
+    public static string ExportOnepkg(
+        [Description("OneNote object ID of the notebook to export.")] string notebookId,
+        [Description("Target .onepkg file path.")] string outputPath)
+        => PublishNode(notebookId, outputPath, OneNotePublishFormat.PfOneNotePackage);
+
+    // Package publishes (.one/.onepkg) flush the file asynchronously — Publish can
+    // return before OneNote finishes writing — so we wait for the file to appear.
+    private static readonly TimeSpan PublishFileTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Publishes a single hierarchy node to one target file in the given format.
+    /// Shared by the PDF, .one and .onepkg single-file exports: resolve the path,
+    /// ensure the parent directory exists, clear any stale target (Publish refuses
+    /// to overwrite), then publish, wait for the file to materialise, and report it.
+    /// </summary>
+    private static string PublishNode(string nodeId, string outputPath, int publishFormat)
     {
         var fullPath = Path.GetFullPath(outputPath);
 
@@ -56,9 +84,46 @@ public static class ExportTools
             Directory.CreateDirectory(parent); // propagates on invalid drives
 
         DeleteIfExists(fullPath);
-        OneNoteSession.Instance.Publish(nodeId, fullPath, OneNotePublishFormat.PfPdf);
+        OneNoteSession.Instance.Publish(nodeId, fullPath, publishFormat);
+        WaitForFile(fullPath);
 
         return JsonSerializer.Serialize(new[] { fullPath });
+    }
+
+    /// <summary>
+    /// Blocks until the published file is fully written or the timeout elapses.
+    /// OneNote returns from Publish while it is still creating the file: the path
+    /// first appears empty, then fills, and stays locked until the write completes.
+    /// So we wait for a non-empty file whose size has stopped changing and which we
+    /// can open for reading — the point at which OneNote has finished with it.
+    /// </summary>
+    private static void WaitForFile(string path)
+    {
+        var deadline = DateTime.UtcNow + PublishFileTimeout;
+        long lastLength = -1;
+        while (true)
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new IOException($"OneNote did not finish producing '{path}' within {PublishFileTimeout.TotalSeconds:0}s.");
+
+            try
+            {
+                var info = new FileInfo(path);
+                if (info.Exists && info.Length > 0 && info.Length == lastLength)
+                {
+                    // Size has settled; confirm OneNote has released its write lock.
+                    using var _ = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return;
+                }
+                lastLength = info.Exists ? info.Length : -1;
+            }
+            catch (IOException)
+            {
+                // Still being written/locked — keep waiting.
+            }
+
+            Thread.Sleep(150);
+        }
     }
 
     /// <summary>Publishes each page under the node to its own PDF in a directory.</summary>
