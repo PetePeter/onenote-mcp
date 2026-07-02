@@ -49,11 +49,28 @@ public sealed class FixtureNotebook : IDisposable
     /// <summary>Text run placed on the text page.</summary>
     public string KnownText => "known fixture text run";
 
+    /// <summary>
+    /// When the environment variable <c>ONENOTE_COM_REQUIRED=1</c> is set, a
+    /// missing or failing COM build throws instead of silently skipping. This is
+    /// the guard against false-green runs: on a machine that is SUPPOSED to drive
+    /// OneNote live, a dead COM path turns the suite RED rather than passing in
+    /// milliseconds without ever exercising COM.
+    /// </summary>
+    private static bool ComRequired =>
+        Environment.GetEnvironmentVariable("ONENOTE_COM_REQUIRED") == "1";
+
     /// <summary>Builds the fixture. Downgrades to a skip on missing/failing COM.</summary>
     public FixtureNotebook()
     {
         if (!OneNoteSession.IsComAvailable)
         {
+            if (ComRequired)
+            {
+                throw new InvalidOperationException(
+                    "ONENOTE_COM_REQUIRED=1 but the OneNote.Application COM ProgID is not " +
+                    "registered on this machine. Refusing to skip COM integration tests.");
+            }
+
             // No OneNote on this machine — leave Available = false so tests skip.
             return;
         }
@@ -77,11 +94,21 @@ public sealed class FixtureNotebook : IDisposable
 
             Available = true;
         }
-        catch (COMException)
+        catch (COMException ex)
         {
-            // COM present but unusable in this environment — treat as a skip.
             Available = false;
             TryCleanup();
+
+            if (ComRequired)
+            {
+                // COM is present and required, but the live build failed — fail loud
+                // so the false-green can never recur.
+                throw new InvalidOperationException(
+                    "ONENOTE_COM_REQUIRED=1 but building the fixture notebook over COM " +
+                    $"failed (HRESULT 0x{ex.HResult:X8}). See inner exception.", ex);
+            }
+
+            // COM present but unusable in this environment — treat as a skip.
         }
     }
 

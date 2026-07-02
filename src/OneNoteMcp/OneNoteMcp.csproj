@@ -18,4 +18,21 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
 
+  <!--
+    Early-bound OneNote interop. The assembly is pre-generated once with TlbImp
+    from the OneNote 1.1 typelib (GUID {0EA692EE-BB50-4E3C-AEF0-356D91732725},
+    embedded in ONENOTE.EXE resource 3) and committed under lib/, because a
+    <COMReference> requires VS/Framework MSBuild (plain `dotnet build` errors
+    MSB4803). EmbedInteropTypes=true bakes the types into OneNoteMcp.dll so no
+    interop DLL is needed at runtime. Late-bound COM (InvokeMember/dynamic) does
+    NOT work against OneNote on .NET Core — early binding is required. See P-0541.
+  -->
+  <ItemGroup>
+    <Reference Include="Microsoft.Office.Interop.OneNote">
+      <HintPath>lib\Microsoft.Office.Interop.OneNote.dll</HintPath>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
 </Project>
