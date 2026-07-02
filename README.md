@@ -221,6 +221,68 @@ failures are **returned** in the tool result as human-readable text (see
 | `onenote_detect_format` | `pathOrNodeId` (file path or object ID) | JSON report: current 2010+ vs legacy 2007 (header sniff, read-only). |
 | `onenote_convert_section` | `sectionId`, `outputPath` | JSON report; best-effort republish to current `.one` format. |
 
+## OneNote page XML schema
+
+This server does **not** define or bundle its own schema (there is no `.xsd` in
+the repo). It works directly against the XML that OneNote's own COM API produces
+and accepts — OneNote is the source of truth for the grammar.
+
+- **Reads** (`onenote_get_page`, `onenote_get_hierarchy`, …) return **raw OneNote
+  XML** exactly as OneNote emits it. Parsing here is namespace-agnostic (elements
+  are matched by local name such as `Page`, `Outline`, `T`, `Image`), so it
+  tolerates any OneNote schema generation.
+- **Writes** (`onenote_update_page`) take a **full `<one:Page>` document** — a
+  full-page replace, not a patch. Before the COM call, a lightweight guard
+  (`PageXmlValidator`) checks only that the payload is well-formed, rooted in a
+  `<Page>` element in a OneNote schema namespace, and carries an `ID` attribute
+  (so the update targets the right page instead of silently creating a new one).
+  It does **not** validate the body against the full XSD — OneNote does that.
+- The schema **version** is selected per call via an integer OneNote understands
+  (`Xs2007=0`, `Xs2010=1`, `Xs2013=2`); every tool uses `Xs2013`.
+
+### The canonical schema
+
+The authoritative grammar is Microsoft's `OneNoteApplication` XML schema (the
+`http://schemas.microsoft.com/office/onenote/2013/onenote` namespace), documented
+here:
+
+- OneNote XML schema reference:
+  <https://learn.microsoft.com/office/client-developer/onenote/onenote-xml-schemas>
+- `IApplication` COM interface (the API these tools drive):
+  <https://learn.microsoft.com/office/client-developer/onenote/application-interface-onenote>
+
+The most reliable way to see the exact shape for a given element is to create the
+content in OneNote and call `onenote_get_page` — the returned XML is a ready-made
+template you can mutate and pass back to `onenote_update_page`.
+
+### Minimal valid write payload
+
+A complete, minimal `<one:Page>` accepted by `onenote_update_page` — a title plus
+one body text run. The `ID` must be the object ID of the page you are updating
+(get it from `onenote_create_page` or the hierarchy tools):
+
+```xml
+<one:Page xmlns:one="http://schemas.microsoft.com/office/onenote/2013/onenote"
+          ID="{OBJECT-ID-OF-THE-PAGE}">
+  <one:Title>
+    <one:OE>
+      <one:T><![CDATA[My page title]]></one:T>
+    </one:OE>
+  </one:Title>
+  <one:Outline>
+    <one:OEChildren>
+      <one:OE>
+        <one:T><![CDATA[Body text goes here.]]></one:T>
+      </one:OE>
+    </one:OEChildren>
+  </one:Outline>
+</one:Page>
+```
+
+Text is wrapped in `<![CDATA[...]]>` so markup characters are not interpreted.
+Recommended workflow: `onenote_get_page` → mutate the returned XML → send the
+whole document back to `onenote_update_page`.
+
 ## Export & format capabilities
 
 - **PDF** — single file for a page/section (`mode: single`), or one PDF per page
