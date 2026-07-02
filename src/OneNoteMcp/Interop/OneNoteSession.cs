@@ -260,6 +260,12 @@ public sealed class OneNoteSession : IDisposable
         Invoke("CloseNotebook", new object?[] { notebookId });
     }
 
+    /// <summary>Deletes a hierarchy node (page/section/notebook) by its object ID. No conflict check.</summary>
+    public void DeleteHierarchy(string objectId)
+    {
+        Invoke("DeleteHierarchy", new object?[] { objectId, DateTime.MinValue, true });
+    }
+
     /// <inheritdoc/>
     public void Dispose() => _lock.Dispose();
 }

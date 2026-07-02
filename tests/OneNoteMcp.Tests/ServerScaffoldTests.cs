@@ -30,6 +30,8 @@ public class ServerScaffoldTests
         Assert.Equal(
             new[]
             {
+                "onenote_create_page",
+                "onenote_delete_page",
                 "onenote_diagnostics",
                 "onenote_extract_page_files",
                 "onenote_find_pages",
@@ -37,6 +39,7 @@ public class ServerScaffoldTests
                 "onenote_get_page",
                 "onenote_get_page_info",
                 "onenote_list_notebooks",
+                "onenote_update_page",
             },
             toolNames);
     }
