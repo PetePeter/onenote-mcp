@@ -33,6 +33,8 @@ public class ServerScaffoldTests
                 "onenote_diagnostics",
                 "onenote_find_pages",
                 "onenote_get_hierarchy",
+                "onenote_get_page",
+                "onenote_get_page_info",
                 "onenote_list_notebooks",
             },
             toolNames);
