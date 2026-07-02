@@ -70,7 +70,28 @@ The integration tests build a fixture notebook in `%TEMP%` via COM and tear it
 down per run. To require live COM (fail loudly instead of skipping when OneNote
 is unavailable), set `ONENOTE_COM_REQUIRED=1` before `dotnet test`.
 
-## Register with Claude Code
+## Install from a GitHub Release (no .NET required)
+
+The quickest path: download the self-contained Windows build and point Claude at
+it. No .NET SDK, no source checkout, no container.
+
+> This server drives OneNote through **COM**, so it must run as a native process
+> on the same Windows desktop where OneNote is installed. That is why it ships as
+> a downloadable `.exe` rather than a `docker run ghcr.io/...`-style image — a
+> container cannot reach the host's OneNote COM server.
+
+1. Download `OneNoteMcp-v1.0.0-win-x64.zip` from the
+   [latest release](../../releases/latest) and unzip it anywhere, e.g.
+   `C:\Tools\onenote-mcp\`.
+2. Register the extracted `OneNoteMcp.exe` with Claude Code:
+
+```powershell
+claude mcp add onenote -- C:\Tools\onenote-mcp\OneNoteMcp.exe
+```
+
+That's it — restart Claude Code and the `onenote_*` tools are available.
+
+## Register with Claude Code (from source)
 
 Add this to your project's `.mcp.json` (adjust the path to the checkout):
 
