@@ -5,11 +5,13 @@ namespace OneNoteMcp.Model;
 
 /// <summary>A decoded inline binary from a page, ready to be written to disk.</summary>
 public sealed record InlineBinary(
-    byte[] Bytes, string Type, string Extension, int? Width, int? Height, string SourceElementId);
+    byte[] Bytes, string Type, string Extension, int? Width, int? Height, string SourceElementId,
+    string? RecognizedText = null);
 
 /// <summary>A record describing a binary that was extracted to a file on disk.</summary>
 public sealed record ExtractedFile(
-    string Path, string Type, int? Width, int? Height, string SourceElementId);
+    string Path, string Type, int? Width, int? Height, string SourceElementId,
+    string? RecognizedText = null);
 
 /// <summary>
 /// Pure, COM-free extraction of inline binary objects from OneNote page XML.
@@ -45,17 +47,29 @@ public static class BinaryExtractor
             var stripped = string.Concat(data.Value.Where(c => !char.IsWhiteSpace(c)));
             var bytes = Convert.FromBase64String(stripped);
 
-            var type = carrier.Name.LocalName == "Image" ? "image" : "file";
-            var format = carrier.Attribute("format")?.Value;
-            var extension = InferExtension(format, bytes);
+            // Ink carriers inline their ISF (Ink Serialized Format) as base64 Data
+            // at detail=all. They must be typed "ink" with an explicit "isf" extension
+            // rather than sniffed like images/generic files.
+            var local = carrier.Name.LocalName;
+            var isInk = local is "InkDrawing" or "InkWord" or "InkParagraph";
 
+            var type = isInk ? "ink" : local == "Image" ? "image" : "file";
+            var format = carrier.Attribute("format")?.Value;
+            var extension = isInk ? "isf" : InferExtension(format, bytes);
+
+            // Geometry lives in a Size child (InkDrawing/Image); InkWord instead carries
+            // width/height as its own attributes, so fall back to those when no child.
             var size = carrier.Elements().FirstOrDefault(e => e.Name.LocalName == "Size");
-            var width = ParseDimension(size?.Attribute("width")?.Value);
-            var height = ParseDimension(size?.Attribute("height")?.Value);
+            var width = ParseDimension(size?.Attribute("width")?.Value)
+                ?? ParseDimension(carrier.Attribute("width")?.Value);
+            var height = ParseDimension(size?.Attribute("height")?.Value)
+                ?? ParseDimension(carrier.Attribute("height")?.Value);
 
             var sourceId = carrier.Attribute("objectID")?.Value ?? "";
+            var recognizedText = carrier.Attribute("recognizedText")?.Value;
 
-            result.Add(new InlineBinary(bytes, type, extension, width, height, sourceId));
+            result.Add(new InlineBinary(
+                bytes, type, extension, width, height, sourceId, recognizedText));
         }
 
         return result;
@@ -122,4 +136,21 @@ public static class BinaryExtractor
     private static string Sanitize(string value) => new(value
         .Select(c => Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c)
         .ToArray());
+
+    /// <summary>
+    /// Writes <paramref name="bytes"/> to <paramref name="fileName"/> inside
+    /// <paramref name="outputDir"/> (created if missing) and returns the absolute
+    /// path. Defence in depth: throws if the resolved path escapes outputDir, so a
+    /// crafted file name can never write outside the caller's chosen directory.
+    /// </summary>
+    public static string WriteBinary(string outputDir, string fileName, byte[] bytes)
+    {
+        Directory.CreateDirectory(outputDir);
+        var resolvedDir = Path.GetFullPath(outputDir);
+        var fullPath = Path.GetFullPath(Path.Combine(resolvedDir, fileName));
+        if (!fullPath.StartsWith(resolvedDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Derived path '{fullPath}' escapes outputDir.");
+        File.WriteAllBytes(fullPath, bytes);
+        return fullPath;
+    }
 }

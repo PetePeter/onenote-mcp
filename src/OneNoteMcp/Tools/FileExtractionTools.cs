@@ -20,7 +20,7 @@ public static class FileExtractionTools
     public static string ExtractPageFiles(
         [Description("OneNote object ID of the page.")] string pageId,
         [Description("Directory to write extracted files to; created if missing.")] string outputDir,
-        [Description("Which binaries to extract: images, files, or all.")] string filter) => ToolError.Guard(() =>
+        [Description("Which binaries to extract: images, files, ink, or all.")] string filter) => ToolError.Guard(() =>
     {
         var xml = OneNoteSession.Instance.GetPageContent(
             pageId, PageInfoMapper.MapDetail("all"), OneNoteXmlSchema.Xs2013);
@@ -29,20 +29,15 @@ public static class FileExtractionTools
         var binaries = BinaryExtractor.ExtractInlineBinaries(xml);
         var selected = ApplyFilter(binaries, filter);
 
-        Directory.CreateDirectory(outputDir);
-        var resolvedDir = Path.GetFullPath(outputDir);
-
         var written = new List<ExtractedFile>();
         var index = 1;
         foreach (var b in selected)
         {
             var fileName = BinaryExtractor.BuildFileName(pageName, index, b.Extension);
-            var fullPath = Path.GetFullPath(Path.Combine(resolvedDir, fileName));
-            // Defence in depth: never write outside the caller's chosen directory.
-            if (!fullPath.StartsWith(resolvedDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"Derived path '{fullPath}' escapes outputDir.");
-            File.WriteAllBytes(fullPath, b.Bytes);
-            written.Add(new ExtractedFile(fullPath, b.Type, b.Width, b.Height, b.SourceElementId));
+            // WriteBinary creates the dir and enforces the path-escape guard.
+            var fullPath = BinaryExtractor.WriteBinary(outputDir, fileName, b.Bytes);
+            written.Add(new ExtractedFile(
+                fullPath, b.Type, b.Width, b.Height, b.SourceElementId, b.RecognizedText));
             index++;
         }
 
@@ -51,15 +46,17 @@ public static class FileExtractionTools
 
     /// <summary>
     /// Filters decoded binaries by the caller's selection. Empty or "all" keeps
-    /// everything; "images"/"files" keep that type. Unknown filters throw.
+    /// everything; "images"/"files"/"ink" keep that type. "files" excludes ink,
+    /// which is its own category. Unknown filters throw.
     /// </summary>
-    private static IEnumerable<InlineBinary> ApplyFilter(
+    internal static IEnumerable<InlineBinary> ApplyFilter(
         IReadOnlyList<InlineBinary> binaries, string filter) => (filter ?? "").ToLowerInvariant() switch
     {
         "" or "all" => binaries,
         "images" => binaries.Where(b => b.Type == "image"),
         "files" => binaries.Where(b => b.Type == "file"),
+        "ink" => binaries.Where(b => b.Type == "ink"),
         _ => throw new ArgumentException(
-            $"Unknown filter '{filter}'. Expected one of: images, files, all.", nameof(filter)),
+            $"Unknown filter '{filter}'. Expected one of: images, files, ink, all.", nameof(filter)),
     };
 }

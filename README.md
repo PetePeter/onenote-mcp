@@ -190,7 +190,14 @@ failures are **returned** in the tool result as human-readable text (see
 
 | Tool | Parameters | Returns |
 | --- | --- | --- |
-| `onenote_extract_page_files` | `pageId`, `outputDir`, `filter` (`images`\|`files`\|`all`) | JSON array of written file paths. |
+| `onenote_extract_page_files` | `pageId`, `outputDir`, `filter` (`images`\|`files`\|`ink`\|`all`) | JSON array of written file paths (each with `type`, geometry, and `recognizedText` for ink). |
+
+### Page content objects
+
+| Tool | Parameters | Returns |
+| --- | --- | --- |
+| `onenote_get_binary_page_content` | `pageId`, `callbackId`, `outputDir` | Decodes a callback-backed binary to disk; JSON `{path, bytes}`. |
+| `onenote_delete_page_content` | `pageId`, `objectId` | Deletes a single content object from the page. |
 
 ### Notebook / section CRUD
 
@@ -220,6 +227,31 @@ failures are **returned** in the tool result as human-readable text (see
 | `onenote_export_onepkg` | `notebookId`, `outputPath` | JSON array with the produced `.onepkg` path (current 2010+ format). |
 | `onenote_detect_format` | `pathOrNodeId` (file path or object ID) | JSON report: current 2010+ vs legacy 2007 (header sniff, read-only). |
 | `onenote_convert_section` | `sectionId`, `outputPath` | JSON report; best-effort republish to current `.one` format. |
+
+### Navigation & hyperlinks
+
+| Tool | Parameters | Returns |
+| --- | --- | --- |
+| `onenote_navigate_to` | `hierarchyObjectId`, `objectId?`, `newWindow?` | Navigates the OneNote UI to a node/object. |
+| `onenote_navigate_to_url` | `url`, `newWindow?` | Navigates the OneNote UI to a `onenote:` URL. |
+| `onenote_get_hyperlink_to_object` | `hierarchyId`, `pageContentObjectId?` | A `onenote:` hyperlink to the node/object. |
+| `onenote_get_web_hyperlink_to_object` | `hierarchyId`, `pageContentObjectId?` | A web (https) hyperlink to the node/object. |
+
+### Hierarchy maintenance & filing
+
+| Tool | Parameters | Returns |
+| --- | --- | --- |
+| `onenote_get_hierarchy_parent` | `objectId` | Object ID of the node's parent. |
+| `onenote_get_special_location` | `location` (`backup`\|`unfiledNotes`\|`defaultNotebook`) | Filesystem path of the special location. |
+| `onenote_find_meta` | `searchName`, `startNodeId?` | Hierarchy XML of pages matching the metadata name. |
+| `onenote_merge_files` | `baseFile`, `clientFile`, `serverFile`, `targetFile` | Three-way merges OneNote files into the target. |
+| `onenote_merge_sections` | `sourceId`, `destId` | Merges a source section's pages into the destination. |
+| `onenote_sync_hierarchy` | `hierarchyId` | Forces a sync of the node. |
+| `onenote_set_filing_location` | `location` (`email`\|`contacts`\|`tasks`\|`meetings`\|`webContent`\|`printOuts`), `locationType` (`namedSectionNewPage`\|`currentSectionNewPage`\|`currentPage`\|`namedPage`), `sectionId` | Sets the Outlook-item filing section. |
+
+> **Not exposed:** `QuickFiling` (surfaces an interactive modal dialog with no
+> headless automation surface) and OneNote change events (`OnNavigate` /
+> `OnHierarchyChange`, unsupported in managed code) are intentionally omitted.
 
 ## OneNote page XML schema
 
@@ -282,6 +314,41 @@ one body text run. The `ID` must be the object ID of the page you are updating
 Text is wrapped in `<![CDATA[...]]>` so markup characters are not interpreted.
 Recommended workflow: `onenote_get_page` → mutate the returned XML → send the
 whole document back to `onenote_update_page`.
+
+### Inline binaries & ink
+
+At `detail: binaryData` or `all`, OneNote **inlines** every binary object as
+base64 inside a `<one:Data>` child — images, inserted files, and **ink**. For
+ink specifically, OneNote emits the ISF (Ink Serialized Format) stroke bytes
+inline and the `<one:CallbackID>` disappears, so no extra COM round-trip is
+needed to retrieve the strokes.
+
+`onenote_extract_page_files` decodes these to disk, typing each one so the
+`filter` argument can select a category:
+
+| Carrier element | `type` | Written as | Notes |
+| --- | --- | --- | --- |
+| `one:Image` | `image` | sniffed ext (`.png`/`.jpg`/…) | `width`/`height` from the `one:Size` child |
+| inline-file carrier | `file` | sniffed ext, else `.bin` | any other element with an inline `one:Data` |
+| `one:InkDrawing` / `one:InkWord` / `one:InkParagraph` | `ink` | `.isf` | ISF has no magic header, so ink is always `.isf`; `recognizedText` is captured (InkWord), and geometry is read from the carrier's own `width`/`height` attributes when there is no `one:Size` child |
+
+`filter` values: `images`, `files` (**excludes** ink — it is its own category),
+`ink`, or `all`.
+
+```mermaid
+flowchart LR
+    XML["page XML<br/>(detail=all)"] --> EX["BinaryExtractor"]
+    EX --> IMG["type=image → .png/.jpg"]
+    EX --> FILE["type=file → .bin/…"]
+    EX --> INK["type=ink → .isf<br/>+ recognizedText"]
+    IMG --> F{"filter"}
+    FILE --> F
+    INK --> F
+    F -->|images| IMG
+    F -->|files| FILE
+    F -->|ink| INK
+    F -->|all| ALL["everything"]
+```
 
 ## Export & format capabilities
 

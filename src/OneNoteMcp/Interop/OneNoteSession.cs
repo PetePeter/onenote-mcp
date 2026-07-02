@@ -56,6 +56,37 @@ public static class OneNotePublishFormat
     public const int PfOneNote2007    = 8;
 }
 
+/// <summary>OneNote SpecialLocation enumeration values (for GetSpecialLocation).</summary>
+public static class OneNoteSpecialLocation
+{
+    public const int SlBackUpFolder          = 0;
+    public const int SlUnfiledNotesSection   = 1;
+    public const int SlDefaultNotebookFolder = 2;
+}
+
+/// <summary>OneNote FilingLocation enumeration values (for SetFilingLocation).</summary>
+public static class OneNoteFilingLocation
+{
+    public const int FlEMail      = 0;
+    public const int FlContacts   = 1;
+    public const int FlTasks      = 2;
+    public const int FlMeetings   = 3;
+    public const int FlWebContent = 4;
+    public const int FlPrintOuts  = 5;
+}
+
+/// <summary>
+/// OneNote FilingLocationType enumeration values (for SetFilingLocation).
+/// Note the interop skips 3 — <c>fltNamedPage</c> is 4.
+/// </summary>
+public static class OneNoteFilingLocationType
+{
+    public const int FltNamedSectionNewPage  = 0;
+    public const int FltCurrentSectionNewPage = 1;
+    public const int FltCurrentPage          = 2;
+    public const int FltNamedPage            = 4;
+}
+
 // ─── Session ──────────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -331,6 +362,161 @@ public sealed class OneNoteSession : IDisposable
         Dispatch(
             real => real.UpdateHierarchy(changesXml, (XMLSchema)xmlSchema),
             fake => InvokeFake(fake, "UpdateHierarchy", new object?[] { changesXml, xmlSchema }));
+
+    // ── Full IApplication coverage (P-0543) ───────────────────────────────────
+    // QuickFiling is intentionally NOT wrapped: it surfaces the interactive
+    // IQuickFilingDialog modal, which has no headless/automation surface.
+    // OnNavigate/OnHierarchyChange events are out of scope (unsupported in managed
+    // code per MSDN).
+
+    /// <summary>
+    /// Fetches a page's binary object (identified by a callback ID from the page
+    /// XML) as a base64 string. General binary-by-callback retrieval.
+    /// </summary>
+    public string GetBinaryPageContent(string pageId, string callbackId) =>
+        Dispatch(
+            real =>
+            {
+                real.GetBinaryPageContent(pageId, callbackId, out var b64);
+                return b64;
+            },
+            fake =>
+            {
+                var args = new object?[] { pageId, callbackId, string.Empty };
+                InvokeFake(fake, "GetBinaryPageContent", args);
+                return (string)args[2]!;
+            });
+
+    /// <summary>Deletes a single content object (by object ID) from a page.</summary>
+    public void DeletePageContent(string pageId, string objectId) =>
+        Dispatch(
+            real => real.DeletePageContent(pageId, objectId, DateTime.MinValue, true),
+            fake => InvokeFake(fake, "DeletePageContent",
+                new object?[] { pageId, objectId, DateTime.MinValue, true }));
+
+    /// <summary>Returns the object ID of the parent of the given hierarchy node.</summary>
+    public string GetHierarchyParent(string objectId) =>
+        Dispatch(
+            real =>
+            {
+                real.GetHierarchyParent(objectId, out var parentId);
+                return parentId;
+            },
+            fake =>
+            {
+                var args = new object?[] { objectId, string.Empty };
+                InvokeFake(fake, "GetHierarchyParent", args);
+                return (string)args[1]!;
+            });
+
+    /// <summary>
+    /// Returns the filesystem path of a OneNote special location
+    /// (backup folder, unfiled-notes section, or default notebook folder).
+    /// </summary>
+    public string GetSpecialLocation(int specialLocation) =>
+        Dispatch(
+            real =>
+            {
+                real.GetSpecialLocation((SpecialLocation)specialLocation, out var path);
+                return path;
+            },
+            fake =>
+            {
+                var args = new object?[] { specialLocation, string.Empty };
+                InvokeFake(fake, "GetSpecialLocation", args);
+                return (string)args[1]!;
+            });
+
+    /// <summary>Navigates the OneNote UI to a hierarchy node and optional object.</summary>
+    public void NavigateTo(string hierarchyObjectId, string objectId = "", bool newWindow = false) =>
+        Dispatch(
+            real => real.NavigateTo(hierarchyObjectId, objectId, newWindow),
+            fake => InvokeFake(fake, "NavigateTo",
+                new object?[] { hierarchyObjectId, objectId, newWindow }));
+
+    /// <summary>Navigates the OneNote UI to a onenote: URL.</summary>
+    public void NavigateToUrl(string url, bool newWindow = false) =>
+        Dispatch(
+            real => real.NavigateToUrl(url, newWindow),
+            fake => InvokeFake(fake, "NavigateToUrl", new object?[] { url, newWindow }));
+
+    /// <summary>Returns a onenote: hyperlink to a hierarchy node (and optional page object).</summary>
+    public string GetHyperlinkToObject(string hierarchyId, string pageContentObjectId = "") =>
+        Dispatch(
+            real =>
+            {
+                real.GetHyperlinkToObject(hierarchyId, pageContentObjectId, out var link);
+                return link;
+            },
+            fake =>
+            {
+                var args = new object?[] { hierarchyId, pageContentObjectId, string.Empty };
+                InvokeFake(fake, "GetHyperlinkToObject", args);
+                return (string)args[2]!;
+            });
+
+    /// <summary>Returns a web (https) hyperlink to a hierarchy node (and optional page object).</summary>
+    public string GetWebHyperlinkToObject(string hierarchyId, string pageContentObjectId = "") =>
+        Dispatch(
+            real =>
+            {
+                real.GetWebHyperlinkToObject(hierarchyId, pageContentObjectId, out var link);
+                return link;
+            },
+            fake =>
+            {
+                var args = new object?[] { hierarchyId, pageContentObjectId, string.Empty };
+                InvokeFake(fake, "GetWebHyperlinkToObject", args);
+                return (string)args[2]!;
+            });
+
+    /// <summary>
+    /// Searches page metadata by name and returns hierarchy XML of matching pages.
+    /// Pass empty <paramref name="startNodeId"/> to search from the root.
+    /// </summary>
+    public string FindMeta(string searchName, int xmlSchema, string startNodeId = "") =>
+        Dispatch(
+            real =>
+            {
+                real.FindMeta(startNodeId, searchName, out var xml, false, (XMLSchema)xmlSchema);
+                return xml;
+            },
+            fake =>
+            {
+                var args = new object?[] { startNodeId, searchName, string.Empty, false, xmlSchema };
+                InvokeFake(fake, "FindMeta", args);
+                return (string)args[2]!;
+            });
+
+    /// <summary>Three-way merges OneNote files (base/client/server) into a target file.</summary>
+    public void MergeFiles(string baseFile, string clientFile, string serverFile, string targetFile) =>
+        Dispatch(
+            real => real.MergeFiles(baseFile, clientFile, serverFile, targetFile),
+            fake => InvokeFake(fake, "MergeFiles",
+                new object?[] { baseFile, clientFile, serverFile, targetFile }));
+
+    /// <summary>Merges the pages of a source section into a destination section.</summary>
+    public void MergeSections(string sourceId, string destId) =>
+        Dispatch(
+            real => real.MergeSections(sourceId, destId),
+            fake => InvokeFake(fake, "MergeSections", new object?[] { sourceId, destId }));
+
+    /// <summary>Forces a sync of the given hierarchy node (notebook/section).</summary>
+    public void SyncHierarchy(string hierarchyId) =>
+        Dispatch(
+            real => real.SyncHierarchy(hierarchyId),
+            fake => InvokeFake(fake, "SyncHierarchy", new object?[] { hierarchyId }));
+
+    /// <summary>
+    /// Sets the section OneNote files a given kind of Outlook item into
+    /// (e-mail, contacts, tasks, …).
+    /// </summary>
+    public void SetFilingLocation(int filingLocation, int filingLocationType, string sectionId) =>
+        Dispatch(
+            real => real.SetFilingLocation(
+                (FilingLocation)filingLocation, (FilingLocationType)filingLocationType, sectionId),
+            fake => InvokeFake(fake, "SetFilingLocation",
+                new object?[] { filingLocation, filingLocationType, sectionId }));
 
     /// <inheritdoc/>
     public void Dispose() => _lock.Dispose();

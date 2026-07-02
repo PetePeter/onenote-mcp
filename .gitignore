@@ -2,6 +2,7 @@
 bin/
 obj/
 publish/
+.devbuild/
 
 ## Rider / VS
 .vs/
@@ -12,6 +13,9 @@ publish/
 TestResults/
 *.trx
 [Ll]ogs/
+
+## Python (deploy script scratch)
+__pycache__/
 
 ## OS
 Thumbs.db
