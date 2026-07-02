@@ -27,7 +27,15 @@ public class ServerScaffoldTests
     {
         var toolNames = DiscoverToolNames(typeof(DiagnosticsTool).Assembly);
 
-        Assert.Equal(new[] { "onenote_diagnostics" }, toolNames);
+        Assert.Equal(
+            new[]
+            {
+                "onenote_diagnostics",
+                "onenote_find_pages",
+                "onenote_get_hierarchy",
+                "onenote_list_notebooks",
+            },
+            toolNames);
     }
 
     [Fact]

@@ -204,6 +204,15 @@ public sealed class OneNoteSession : IDisposable
         return (string)args[2]!;
     }
 
+    /// <summary>Runs a OneNote search and returns hierarchy XML of matching pages.</summary>
+    public string FindPages(string searchString, int xmlSchema, string startNodeId = "")
+    {
+        // args[2] is the out hierarchy-xml parameter
+        var args = new object?[] { startNodeId, searchString, string.Empty, false, false, xmlSchema };
+        Invoke("FindPages", args);
+        return (string)args[2]!;
+    }
+
     /// <summary>Returns the XML content of a OneNote page.</summary>
     public string GetPageContent(string pageId, int pageInfo, int xmlSchema)
     {
