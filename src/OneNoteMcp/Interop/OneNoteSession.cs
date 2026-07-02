@@ -266,6 +266,12 @@ public sealed class OneNoteSession : IDisposable
         Invoke("DeleteHierarchy", new object?[] { objectId, DateTime.MinValue, true });
     }
 
+    /// <summary>Applies a hierarchy-change XML fragment (e.g. a renamed node) to OneNote.</summary>
+    public void UpdateHierarchy(string changesXml, int xmlSchema)
+    {
+        Invoke("UpdateHierarchy", new object?[] { changesXml, xmlSchema });
+    }
+
     /// <inheritdoc/>
     public void Dispose() => _lock.Dispose();
 }
