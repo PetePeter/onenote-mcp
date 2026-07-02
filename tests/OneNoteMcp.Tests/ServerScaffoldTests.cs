@@ -31,6 +31,7 @@ public class ServerScaffoldTests
             new[]
             {
                 "onenote_diagnostics",
+                "onenote_extract_page_files",
                 "onenote_find_pages",
                 "onenote_get_hierarchy",
                 "onenote_get_page",
