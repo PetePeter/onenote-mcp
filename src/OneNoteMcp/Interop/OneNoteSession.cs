@@ -33,6 +33,14 @@ public static class OneNoteCreateFileType
     public const int CftSection  = 3;
 }
 
+/// <summary>OneNote NewPageStyle enumeration values.</summary>
+public static class OneNoteNewPageStyle
+{
+    public const int NpsDefault            = 0;
+    public const int NpsBlankPageWithTitle = 1;
+    public const int NpsBlankPageNoTitle   = 2;
+}
+
 /// <summary>OneNote PublishFormat enumeration values.</summary>
 public static class OneNotePublishFormat
 {
@@ -227,6 +235,20 @@ public sealed class OneNoteSession : IDisposable
     {
         var args = new object?[] { hierarchyId, targetFilePath, publishFormat, clsidExporter };
         Invoke("Publish", args);
+    }
+
+    /// <summary>Creates a new page in a section. Returns the new page's object ID.</summary>
+    public string CreateNewPage(string sectionId, int newPageStyle = OneNoteNewPageStyle.NpsDefault)
+    {
+        var args = new object?[] { sectionId, string.Empty, newPageStyle };
+        Invoke("CreateNewPage", args);
+        return (string)args[1]!;
+    }
+
+    /// <summary>Closes an open notebook. Does not delete files on disk.</summary>
+    public void CloseNotebook(string notebookId)
+    {
+        Invoke("CloseNotebook", new object?[] { notebookId });
     }
 
     /// <inheritdoc/>
