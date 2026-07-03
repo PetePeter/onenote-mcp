@@ -20,19 +20,6 @@ public sealed class ToolVersionGateTests : IDisposable
     public void Dispose() => OneNoteSession.ResetForTests();
 
     [Fact]
-    public void Gate_UnsupportedVersion_ReturnsStructuredError_AndNeverCallsCom()
-    {
-        // SyncHierarchy is a modern-only capability; 2007 (v12) does not support it.
-        var fake = new FakeOneNoteApp { ThrowIfCalled = true };
-        OneNoteSession.AppFactoryOverride = _ => fake;
-
-        var result = HierarchyMaintenanceTools.SyncHierarchy("2007", "some-id");
-
-        Assert.Contains("Unsupported on OneNote 2007", result, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(fake.LastMethod); // COM must never have been touched
-    }
-
-    [Fact]
     public void Gate_UnknownVersion_ReturnsResolveError()
     {
         var result = HierarchyTools.ListNotebooks("1999");

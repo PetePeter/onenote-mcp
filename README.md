@@ -59,6 +59,78 @@ sequenceDiagram
   `<RollForward>Major</RollForward>`, so a OneNote-side COM server started under a
   newer runtime works too.
 
+## Multi-version support
+
+Several OneNote desktop generations can be installed side by side (for example
+OneNote **2007** and OneNote **2016/2019/365**), and their COM `IApplication`
+interfaces are *not* identical — the 2007 (v12) server is missing six methods
+added in later releases. To keep routing unambiguous, **every tool takes a
+required `version` token as its first parameter**. There is no default and no
+implicit "current version" fallback: an empty or unknown token returns a
+structured error rather than guessing.
+
+> **Why no default?** Installing OneNote 2007 repoints the version-independent
+> `OneNote.Application` ProgID (its `CurVer`) at the 2007 server. Relying on the
+> registered default would therefore silently route to whichever version last
+> won that registry key. Passing an explicit `version` removes that ambiguity.
+
+Call **`onenote_list_versions`** (the one tool that takes *no* `version` arg) to
+discover what is installed — it reports each version's display name, CLSID, exe
+path, and the capabilities that version supports.
+
+Accepted tokens: a year (`2007`, `2010`, `2013`, `2016`), an Office major
+(`12`, `14`, `16`), or a raw CLSID.
+
+```mermaid
+flowchart LR
+    T["version token<br/>(2007 / 16 / CLSID)"] --> R["VersionResolver.Resolve"]
+    R --> C["canonical CLSID"]
+    C --> F["OneNoteSession.For(clsid)"]
+    F --> A{"adapter by major"}
+    A -->|"12"| L["Legacy adapter<br/>(OneNote 2007)"]
+    A -->|"14 / 15 / 16"| M["Modern adapter<br/>(2010 / 2013 / 2016)"]
+    L --> G["capability gate"]
+    M --> G
+    G -->|"supported"| COM["OneNote COM call"]
+    G -->|"unsupported"| E["structured error<br/>(COM never touched)"]
+```
+
+### Capability matrix
+
+Which wrapped `IApplication` method each major supports. 2007 (v12) lacks the six
+`IApplication2`–`IApplication4` additions; 2010/2013/2016 support all 23. This
+table is verified against `OneNoteCapabilities` by an automated drift-guard test.
+
+| Method | 2007 | 2010 | 2013 | 2016 |
+| --- | --- | --- | --- | --- |
+| GetHierarchy | ✓ | ✓ | ✓ | ✓ |
+| FindPages | ✓ | ✓ | ✓ | ✓ |
+| GetPageContent | ✓ | ✓ | ✓ | ✓ |
+| UpdatePageContent | ✓ | ✓ | ✓ | ✓ |
+| OpenHierarchy | ✓ | ✓ | ✓ | ✓ |
+| Publish | ✓ | ✓ | ✓ | ✓ |
+| CreateNewPage | ✓ | ✓ | ✓ | ✓ |
+| CloseNotebook | ✓ | ✓ | ✓ | ✓ |
+| DeleteHierarchy | ✓ | ✓ | ✓ | ✓ |
+| UpdateHierarchy | ✓ | ✓ | ✓ | ✓ |
+| GetBinaryPageContent | ✓ | ✓ | ✓ | ✓ |
+| DeletePageContent | ✓ | ✓ | ✓ | ✓ |
+| GetHierarchyParent | ✓ | ✓ | ✓ | ✓ |
+| GetSpecialLocation | ✓ | ✓ | ✓ | ✓ |
+| NavigateTo | ✓ | ✓ | ✓ | ✓ |
+| GetHyperlinkToObject | ✓ | ✓ | ✓ | ✓ |
+| FindMeta | ✓ | ✓ | ✓ | ✓ |
+| NavigateToUrl | ✗ | ✓ | ✓ | ✓ |
+| GetWebHyperlinkToObject | ✗ | ✓ | ✓ | ✓ |
+| MergeFiles | ✗ | ✓ | ✓ | ✓ |
+| MergeSections | ✗ | ✓ | ✓ | ✓ |
+| SyncHierarchy | ✗ | ✓ | ✓ | ✓ |
+| SetFilingLocation | ✗ | ✓ | ✓ | ✓ |
+
+Invoking a `✗` method against 2007 returns a structured
+`Unsupported on OneNote 2007: '<method>' is not available in this version.`
+error — the capability gate rejects it *before* any COM call is made.
+
 ## Build & test
 
 ```powershell
