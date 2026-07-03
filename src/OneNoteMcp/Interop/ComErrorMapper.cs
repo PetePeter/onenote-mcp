@@ -132,6 +132,12 @@ public static class ComErrorMapper
 
     private static string DescribeUnsupported(NotSupportedInVersionException ex)
     {
+        // If a custom message was provided, use it (e.g., for export-specific guidance).
+        var expectedDefaultMessage = $"OneNote method '{ex.MethodName}' is not supported by version {ex.VersionMajor}.";
+        if (ex.Message != expectedDefaultMessage)
+            return ex.Message;
+
+        // Otherwise, generate a generic message.
         var display = OneNoteVersionCatalog.All
             .FirstOrDefault(k => k.Major == ex.VersionMajor)?.DisplayName
             ?? ex.VersionMajor.ToString();

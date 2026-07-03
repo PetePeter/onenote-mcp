@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using OneNoteMcp.Interop;
 using OneNoteMcp.Tests.Fixtures;
 using OneNoteMcp.Tools;
 using Xunit;
@@ -102,6 +103,68 @@ public sealed class ExportPackageIntegrationTests
         // An embedded null makes an illegal path deterministically across machines.
         var illegalPath = Path.Combine(Path.GetTempPath(), "onenote-mcp\0nodir", "x.one");
         Assert.ThrowsAny<Exception>(() => ExportTools.ExportOne(FixtureNotebook.TestVersion, _fx.SectionId, illegalPath));
+    }
+
+    // ── v12 guard tests ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExportOne_Version2007_ThrowsNotSupportedWithClearMessage()
+    {
+        var target = ScratchFile("one");
+        try
+        {
+            var ex = Assert.Throws<NotSupportedInVersionException>(
+                () => ExportTools.ExportOne("2007", "{fake-section-id}", target));
+
+            Assert.Equal(12, ex.VersionMajor);
+            Assert.Equal("Publish", ex.MethodName);
+            Assert.Contains("2007", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("2010", ex.Message);
+            Assert.Contains("2010+", ex.Message);
+        }
+        finally
+        {
+            TryDeleteFile(target);
+        }
+    }
+
+    [Fact]
+    public void ExportOnepkg_Version2007_ThrowsNotSupportedWithClearMessage()
+    {
+        var target = ScratchFile("onepkg");
+        try
+        {
+            var ex = Assert.Throws<NotSupportedInVersionException>(
+                () => ExportTools.ExportOnepkg("2007", "{fake-notebook-id}", target));
+
+            Assert.Equal(12, ex.VersionMajor);
+            Assert.Equal("Publish", ex.MethodName);
+            Assert.Contains("2007", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("2010", ex.Message);
+            Assert.Contains("2010+", ex.Message);
+        }
+        finally
+        {
+            TryDeleteFile(target);
+        }
+    }
+
+    [Fact]
+    public void ExportOne_VersionMajor12_ThrowsNotSupportedWithClearMessage()
+    {
+        // Verify major 12 (the numeric form of 2007) is also guarded.
+        var target = ScratchFile("one");
+        try
+        {
+            var ex = Assert.Throws<NotSupportedInVersionException>(
+                () => ExportTools.ExportOne("12", "{fake-section-id}", target));
+
+            Assert.Equal(12, ex.VersionMajor);
+        }
+        finally
+        {
+            TryDeleteFile(target);
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────

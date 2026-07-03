@@ -55,23 +55,33 @@ public static class ExportTools
         => PublishNode(session, nodeId, outputPath, OneNotePublishFormat.PfPdf);
 
     [McpServerTool(Name = "onenote_export_one")]
-    [Description("Exports a OneNote section to a .one file via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
+    [Description("Exports a OneNote section to a .one file via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. To output 2010+ format, use version=2010, 2013, or 2016. Returns a JSON array containing the produced file path.")]
     public static string ExportOne(
-        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID. Must be 2010+ to export 2010+ format.")] string version,
         [Description("OneNote object ID of the section to export.")] string sectionId,
         [Description("Target .one file path.")] string outputPath)
     {
+        var (_, major) = ToolVersion.Resolve(version);
+        if (major == 12)
+            throw new NotSupportedInVersionException(major, "Publish",
+                "OneNote 2007 cannot export to 2010+ format. Use version=2010, 2013, or 2016 to convert.");
+
         var session = ToolVersion.Route(version, Capability.Publish);
         return PublishNode(session, sectionId, outputPath, OneNotePublishFormat.PfOneNote);
     }
 
     [McpServerTool(Name = "onenote_export_onepkg")]
-    [Description("Exports a whole OneNote notebook to a .onepkg package (a Windows cabinet) via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. Returns a JSON array containing the produced file path.")]
+    [Description("Exports a whole OneNote notebook to a .onepkg package (a Windows cabinet) via the Publish API. Output is current OneNote format (2010+), not the legacy 2007 format. To output 2010+ format, use version=2010, 2013, or 2016. Returns a JSON array containing the produced file path.")]
     public static string ExportOnepkg(
-        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID. Must be 2010+ to export 2010+ format.")] string version,
         [Description("OneNote object ID of the notebook to export.")] string notebookId,
         [Description("Target .onepkg file path.")] string outputPath)
     {
+        var (_, major) = ToolVersion.Resolve(version);
+        if (major == 12)
+            throw new NotSupportedInVersionException(major, "Publish",
+                "OneNote 2007 cannot export to 2010+ format. Use version=2010, 2013, or 2016 to convert.");
+
         var session = ToolVersion.Route(version, Capability.Publish);
         return PublishNode(session, notebookId, outputPath, OneNotePublishFormat.PfOneNotePackage);
     }

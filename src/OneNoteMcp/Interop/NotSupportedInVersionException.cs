@@ -21,4 +21,14 @@ public sealed class NotSupportedInVersionException : NotSupportedException
         VersionMajor = versionMajor;
         MethodName = methodName;
     }
+
+    /// <summary>
+    /// Overload for custom error messages (e.g., export-specific guidance).
+    /// </summary>
+    public NotSupportedInVersionException(int versionMajor, string methodName, string customMessage)
+        : base(customMessage)
+    {
+        VersionMajor = versionMajor;
+        MethodName = methodName;
+    }
 }

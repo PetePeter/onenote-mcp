@@ -37,6 +37,8 @@ public enum Capability
 /// Pure, COM-free per-major capability table encoding the P-0545 spike result:
 /// OneNote 2007 (v12) supports 17 of the 23 wrapped methods; the six
 /// IApplication2-4 additions are absent. Modern majors (14/15/16) support all 23.
+/// Note: v12 can publish, but for .one/.onepkg exports, the tools validate early
+/// to prevent v12→v12 format conversions (contradicting the 2010+ format promise).
 /// Unknown majors throw — there is no default.
 /// </summary>
 public static class OneNoteCapabilities

@@ -39,14 +39,20 @@ public static class FormatTools
     }
 
     [McpServerTool(Name = "onenote_convert_section")]
-    [Description("Best-effort upgrade of a OneNote section to the current 2010+ .one format via the Publish API. Opens the section if OneNote accepts it and republishes to outputPath. Reports failure per-section (never crashes) for sections OneNote cannot open. Returns a JSON report.")]
+    [Description("Best-effort upgrade of a OneNote section to the current 2010+ .one format via the Publish API. Opens the section if OneNote accepts it and republishes to outputPath. Cannot convert from 2007; use version=2010+ for conversion. Reports failure per-section (never crashes) for sections OneNote cannot open. Returns a JSON report.")]
     public static string ConvertSection(
-        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
+        [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID. Must be 2010+ to convert sections.")] string version,
         [Description("OneNote object ID of the section to upgrade.")] string sectionId,
         [Description("Target .one file path for the republished current-format section.")] string outputPath)
     {
         try
         {
+            // Guard early: section conversion from 2007 requires the 2010+ engine.
+            var (_, major) = ToolVersion.Resolve(version);
+            if (major == 12)
+                throw new NotSupportedInVersionException(major, "Publish",
+                    "Section conversion from 2007 to 2010+ requires the 2010+ engine. Use version=2010, 2013, or 2016.");
+
             // Reuse ExportOne so the publish+wait-for-file logic lives in one place;
             // it publishes PfOneNote (current format) and returns the resolved path.
             var exported = ExportTools.ExportOne(version, sectionId, outputPath);

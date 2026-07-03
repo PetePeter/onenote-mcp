@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using OneNoteMcp.Interop;
 using OneNoteMcp.Model;
 using OneNoteMcp.Tests.Fixtures;
 using OneNoteMcp.Tools;
@@ -158,6 +159,49 @@ public sealed class FormatToolsConvertIntegrationTests
 
             Assert.False(doc.GetProperty("success").GetBoolean());
             Assert.False(string.IsNullOrWhiteSpace(doc.GetProperty("reason").GetString()));
+        }
+        finally
+        {
+            TryDelete(target);
+        }
+    }
+
+    [Fact]
+    public void ConvertSection_Version2007_ReportsFailureWithClearMessage()
+    {
+        // Section conversion from 2007 should fail early with a clear message,
+        // before attempting any COM operations. ConvertSection never throws; it
+        // always returns a JSON report for batch use-cases.
+        var target = ScratchFile("one");
+        try
+        {
+            var json = FormatTools.ConvertSection("2007", "{fake-section-id}", target);
+            var doc = JsonDocument.Parse(json).RootElement;
+
+            Assert.False(doc.GetProperty("success").GetBoolean());
+            var reason = doc.GetProperty("reason").GetString() ?? "";
+            Assert.Contains("2007", reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("2010", reason);
+            Assert.Contains("conversion", reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            TryDelete(target);
+        }
+    }
+
+    [Fact]
+    public void ConvertSection_VersionMajor12_ReportsFailureWithClearMessage()
+    {
+        // Verify major 12 (the numeric form of 2007) is also guarded.
+        var target = ScratchFile("one");
+        try
+        {
+            var json = FormatTools.ConvertSection("12", "{fake-section-id}", target);
+            var doc = JsonDocument.Parse(json).RootElement;
+
+            Assert.False(doc.GetProperty("success").GetBoolean());
+            Assert.Contains("2007", doc.GetProperty("reason").GetString() ?? "", StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
