@@ -221,7 +221,7 @@ public sealed class OneNoteSession : IDisposable
     /// recreate-on-death. Delegates through the IOneNoteApp adapter so the same
     /// path works for both the modern and legacy (v12) COM servers.
     /// </summary>
-    private T Dispatch<T>(Func<IOneNoteApp, T> op)
+    private T Dispatch<T>(Func<IOneNoteApp, T> op, int maxAttempts = 5)
     {
         _lock.Wait();
         try
@@ -241,7 +241,7 @@ public sealed class OneNoteSession : IDisposable
                         InvalidateApp(); // Dead proxy — recreate on next call.
                     throw;
                 }
-            });
+            }, maxAttempts);
         }
         catch (COMException ex) when (ex.HResult == HrServerUnavailable)
         {
@@ -258,6 +258,16 @@ public sealed class OneNoteSession : IDisposable
     /// <summary>Void overload of <see cref="Dispatch{T}"/>.</summary>
     private void Dispatch(Action<IOneNoteApp> op) =>
         Dispatch<int>(a => { op(a); return 0; });
+
+    /// <summary>
+    /// Dispatches a NON-idempotent operation with retries disabled (maxAttempts=1).
+    /// OneNote's STA COM frequently returns transient RPC_E_CALL_REJECTED /
+    /// RPC_E_SERVERCALL_RETRYLATER <em>after</em> a create/new has already taken
+    /// effect; retrying such an op would duplicate the created object (e.g. a page).
+    /// The serialising semaphore and recreate-on-death behaviour are preserved; only
+    /// the transient-error retry loop is suppressed.
+    /// </summary>
+    private T DispatchOnce<T>(Func<IOneNoteApp, T> op) => Dispatch(op, maxAttempts: 1);
 
     // ── Public COM wrappers ───────────────────────────────────────────────────
     // Each method delegates straight to IOneNoteApp via Dispatch.
@@ -294,7 +304,7 @@ public sealed class OneNoteSession : IDisposable
 
     /// <summary>Creates a new page in a section. Returns the new page's object ID.</summary>
     public string CreateNewPage(string sectionId, int newPageStyle = OneNoteNewPageStyle.NpsDefault) =>
-        Dispatch(a => a.CreateNewPage(sectionId, newPageStyle));
+        DispatchOnce(a => a.CreateNewPage(sectionId, newPageStyle));
 
     /// <summary>Closes an open notebook. Does not delete files on disk.</summary>
     public void CloseNotebook(string notebookId) =>

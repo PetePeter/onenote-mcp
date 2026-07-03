@@ -50,4 +50,18 @@ internal static class ToolVersion
     /// </summary>
     public static string Guarded(string version, Capability cap, Func<OneNoteSession, string> body) =>
         ToolError.Guard(() => body(Route(version, cap)));
+
+    /// <summary>
+    /// Variant of <see cref="Guarded(string, Capability, Func{OneNoteSession, string})"/>
+    /// that also passes the resolved OneNote major to the body, so callers can
+    /// select the version-correct XML schema/namespace (e.g. 2007 for major 12).
+    /// </summary>
+    public static string Guarded(string version, Capability cap, Func<OneNoteSession, int, string> body) =>
+        ToolError.Guard(() =>
+        {
+            var (clsid, major) = Resolve(version);
+            if (!OneNoteCapabilities.Supports(major, cap))
+                throw new NotSupportedInVersionException(major, cap.ToString());
+            return body(OneNoteSession.For(clsid), major);
+        });
 }
