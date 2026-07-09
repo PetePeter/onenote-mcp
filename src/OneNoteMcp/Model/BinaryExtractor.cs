@@ -132,6 +132,20 @@ public static class BinaryExtractor
         return $"{safe}_{index}.{ext}";
     }
 
+    /// <summary>
+    /// Resolves the caller's output directory: returns it when supplied, else a
+    /// fresh unique directory under the system temp path (created here) so callers
+    /// that just want "grab it to a file" need not choose a location.
+    /// </summary>
+    public static string ResolveOutputDir(string? outputDir)
+    {
+        if (!string.IsNullOrWhiteSpace(outputDir))
+            return outputDir;
+        var temp = Path.Combine(Path.GetTempPath(), "onenote-mcp", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        return temp;
+    }
+
     /// <summary>Replaces every character invalid in a file name with an underscore.</summary>
     private static string Sanitize(string value) => new(value
         .Select(c => Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c)

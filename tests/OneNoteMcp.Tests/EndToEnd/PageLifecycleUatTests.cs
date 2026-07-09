@@ -101,7 +101,7 @@ public sealed class PageLifecycleUatTests
             imagePageId = PageWriteTools.CreatePage(FixtureNotebook.TestVersion, sectionId, "UAT Image " + suffix);
             PageWriteTools.UpdatePage(FixtureNotebook.TestVersion, BuildImagePageXml(imagePageId));
 
-            var extractJson = FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, imagePageId, outDir, "images");
+            var extractJson = FileExtractionTools.ExtractPageFiles(FixtureNotebook.TestVersion, imagePageId, "images", outDir);
             var files = JsonSerializer.Deserialize<List<ExtractedFile>>(extractJson, JsonOpts)!;
             var file = Assert.Single(files);
             Assert.Equal("image", file.Type);

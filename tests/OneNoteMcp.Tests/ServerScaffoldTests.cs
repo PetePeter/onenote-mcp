@@ -41,6 +41,7 @@ public class ServerScaffoldTests
                 "onenote_delete_page_content",
                 "onenote_detect_format",
                 "onenote_diagnostics",
+                "onenote_embed_file",
                 "onenote_export_one",
                 "onenote_export_onepkg",
                 "onenote_export_pdf",

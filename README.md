@@ -262,13 +262,14 @@ failures are **returned** in the tool result as human-readable text (see
 
 | Tool | Parameters | Returns |
 | --- | --- | --- |
-| `onenote_extract_page_files` | `pageId`, `outputDir`, `filter` (`images`\|`files`\|`ink`\|`all`) | JSON array of written file paths (each with `type`, geometry, and `recognizedText` for ink). |
+| `onenote_extract_page_files` | `pageId`, `filter` (`images`\|`files`\|`ink`\|`all`), `outputDir?` | JSON array of written file paths (each with `type`, geometry, and `recognizedText` for ink). Omit `outputDir` to write to a temp directory. |
+| `onenote_embed_file` | `pageId`, `filePath`, `preferredName?`, `x?`, `y?` | Reads a local file and appends it to the page: images are inlined as base64, other files are attached via `one:InsertedFile`. Supply `x`+`y` to place the new outline. JSON `{kind, format, filePath}`. |
 
 ### Page content objects
 
 | Tool | Parameters | Returns |
 | --- | --- | --- |
-| `onenote_get_binary_page_content` | `pageId`, `callbackId`, `outputDir` | Decodes a callback-backed binary to disk; JSON `{path, bytes}`. |
+| `onenote_get_binary_page_content` | `pageId`, `callbackId`, `outputDir?` | Decodes a callback-backed binary to disk; JSON `{path, bytes}`. Omit `outputDir` to write to a temp directory. |
 | `onenote_delete_page_content` | `pageId`, `objectId` | Deletes a single content object from the page. |
 
 ### Notebook / section CRUD
@@ -420,6 +421,27 @@ flowchart LR
     F -->|files| FILE
     F -->|ink| INK
     F -->|all| ALL["everything"]
+```
+
+### Embedding files (the reverse direction)
+
+`onenote_embed_file` takes a **local file path**, reads it server-side, and
+appends it to a page — callers never build base64 or page XML. It auto-routes by
+type: raster images (`png`/`jpg`/`gif`/`bmp`, decided by extension or magic
+sniff) are inlined as base64 in `one:Image`; every other file is attached
+natively via `one:InsertedFile`, which references the file **path** on disk (no
+base64). Supply `x`+`y` to place the appended outline; omit both to let OneNote
+choose. On OneNote 2007 (major 12) the 2007 namespace/schema is emitted.
+
+```mermaid
+flowchart LR
+    P["filePath"] --> R["read bytes"]
+    R --> T{"image magic/ext?"}
+    T -->|png/jpg/gif/bmp| I["one:Image + base64 one:Data"]
+    T -->|other| A["one:InsertedFile pathCache"]
+    I --> W["wrap in one:Outline + page ID"]
+    A --> W
+    W --> U["UpdatePageContent (append)"]
 ```
 
 ## Export & format capabilities

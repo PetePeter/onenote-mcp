@@ -16,16 +16,17 @@ namespace OneNoteMcp.Tools;
 public static class FileExtractionTools
 {
     [McpServerTool(Name = "onenote_extract_page_files")]
-    [Description("Extracts a page's inline images/files to outputDir and returns JSON of the written file paths.")]
+    [Description("Extracts a page's inline images/files to a directory and returns JSON of the written file paths. Omit outputDir to write to a temp directory.")]
     public static string ExtractPageFiles(
         [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the page.")] string pageId,
-        [Description("Directory to write extracted files to; created if missing.")] string outputDir,
-        [Description("Which binaries to extract: images, files, ink, or all.")] string filter) =>
+        [Description("Which binaries to extract: images, files, ink, or all.")] string filter,
+        [Description("Optional directory to write extracted files to; created if missing. Defaults to a temp directory.")] string? outputDir = null) =>
         ToolVersion.Guarded(version, Capability.GetPageContent, s =>
         {
             var xml = s.GetPageContent(pageId, PageInfoMapper.MapDetail("all"), OneNoteXmlSchema.Xs2013);
             var pageName = PageInfoMapper.ParseMetadata(xml).Title;
+            var targetDir = BinaryExtractor.ResolveOutputDir(outputDir);
 
             var binaries = BinaryExtractor.ExtractInlineBinaries(xml);
             var selected = ApplyFilter(binaries, filter);
@@ -36,7 +37,7 @@ public static class FileExtractionTools
             {
                 var fileName = BinaryExtractor.BuildFileName(pageName, index, b.Extension);
                 // WriteBinary creates the dir and enforces the path-escape guard.
-                var fullPath = BinaryExtractor.WriteBinary(outputDir, fileName, b.Bytes);
+                var fullPath = BinaryExtractor.WriteBinary(targetDir, fileName, b.Bytes);
                 written.Add(new ExtractedFile(
                     fullPath, b.Type, b.Width, b.Height, b.SourceElementId, b.RecognizedText));
                 index++;

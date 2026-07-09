@@ -16,12 +16,12 @@ namespace OneNoteMcp.Tools;
 public static class BinaryContentTools
 {
     [McpServerTool(Name = "onenote_get_binary_page_content")]
-    [Description("Fetches a page binary object by its callback ID, writes the decoded bytes to outputDir, and returns JSON {path, bytes}.")]
+    [Description("Fetches a page binary object by its callback ID, writes the decoded bytes to a file, and returns JSON {path, bytes}. Omit outputDir to write to a temp directory.")]
     public static string GetBinaryPageContent(
         [Description("OneNote version token: 2007, 2010, 2013, 2016, an Office major (12/14/16), or a CLSID.")] string version,
         [Description("OneNote object ID of the page.")] string pageId,
         [Description("Callback ID of the binary object (from the page XML's one:CallbackID).")] string callbackId,
-        [Description("Directory to write the decoded file to; created if missing.")] string outputDir) =>
+        [Description("Optional directory to write the decoded file to; created if missing. Defaults to a temp directory.")] string? outputDir = null) =>
         ToolVersion.Guarded(version, Capability.GetBinaryPageContent, s =>
         {
             var b64 = s.GetBinaryPageContent(pageId, callbackId);
@@ -31,7 +31,7 @@ public static class BinaryContentTools
 
             var ext = BinaryExtractor.InferExtension(null, bytes);
             var fileName = BinaryExtractor.BuildFileName("binary", 1, ext);
-            var path = BinaryExtractor.WriteBinary(outputDir, fileName, bytes);
+            var path = BinaryExtractor.WriteBinary(BinaryExtractor.ResolveOutputDir(outputDir), fileName, bytes);
 
             return JsonSerializer.Serialize(new { path, bytes = bytes.Length });
         });
