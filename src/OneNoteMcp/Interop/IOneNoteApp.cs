@@ -11,8 +11,11 @@ namespace OneNoteMcp.Interop;
 /// (string in/out, int constants from the OneNote* constant classes). The
 /// <paramref name="xmlSchema"/>-style ints are honoured by the modern adapter and
 /// dropped by the legacy adapter, which is schema-locked to the 2007 schema.
+///
+/// <see cref="IDisposable.Dispose"/> releases the underlying COM object when the
+/// adapter owns it; call it on the thread that created the adapter.
 /// </summary>
-public interface IOneNoteApp
+public interface IOneNoteApp : IDisposable
 {
     // ── Shared surface (present on every supported version) ────────────────────
 

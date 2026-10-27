@@ -92,8 +92,9 @@ public static class OneNoteFilingLocationType
 
 /// <summary>
 /// Lazy, recreatable bridge to the OneNote COM Application object, keyed per CLSID.
-/// All COM calls are serialised through a single semaphore because the OneNote
-/// Application object lives in a single-threaded COM apartment.
+/// Activation, every COM call and the final release run serially on one dedicated
+/// STA thread (<see cref="StaComExecutor"/>), so the RCW has a single owner and is
+/// released deterministically on <see cref="Dispose"/>.
 /// Use <see cref="For(string)"/> to obtain a per-CLSID session; do NOT use a
 /// process-wide singleton — different OneNote versions require different CLSIDs.
 /// </summary>
@@ -102,6 +103,13 @@ public sealed class OneNoteSession : IDisposable
 {
     // HRESULT for "RPC server unavailable" — COM object must be recreated
     private const int HrServerUnavailable = unchecked((int)0x800706BA);
+    // HRESULT CO_E_SERVER_EXEC_FAILURE — typically OneNote is still exiting after the
+    // last client released it; activation succeeds once shutdown completes.
+    private const int HrServerExecFailure = unchecked((int)0x80080005);
+    private const int MaxActivationAttempts = 4; // waits 1s, 2s, 4s between attempts
+
+    /// <summary>Test seam: the wait between activation attempts. Defaults to Thread.Sleep.</summary>
+    internal static Action<TimeSpan> ActivationBackoff { get; set; } = Thread.Sleep;
 
     // ── Per-CLSID session cache ───────────────────────────────────────────────
 
@@ -114,6 +122,9 @@ public sealed class OneNoteSession : IDisposable
     /// </summary>
     internal static Func<string, IOneNoteApp>? AppFactoryOverride { get; set; }
 
+    /// <summary>Real-COM sessions evicted by <see cref="ResetForTests"/>, kept alive until process exit.</summary>
+    private static readonly ConcurrentBag<OneNoteSession> _retainedForTests = new();
+
     /// <summary>
     /// Returns (or creates) a session for the given canonical CLSID string.
     /// Sessions are cached process-wide: the same CLSID always returns the same
@@ -123,14 +134,34 @@ public sealed class OneNoteSession : IDisposable
         _sessions.GetOrAdd(clsid, c => new OneNoteSession(() => CreateApp(c)));
 
     /// <summary>
-    /// Disposes all cached sessions, clears the cache, and nulls the test override.
-    /// Must be called in test setup and teardown to prevent state leaks between tests.
+    /// Evicts all cached sessions (disposing fake-backed ones, parking real-COM ones)
+    /// and resets the test seams. Call in test setup and teardown to prevent leaks.
     /// </summary>
     internal static void ResetForTests()
     {
-        foreach (var s in _sessions.Values) s.Dispose();
-        _sessions.Clear();
+        foreach (var clsid in _sessions.Keys)
+        {
+            if (!_sessions.TryRemove(clsid, out var session)) continue;
+            // Releasing a real OneNote mid-run lets it exit and relaunch between
+            // tests; park real sessions instead so they live until process exit.
+            if (session._app is ModernOneNoteApp or LegacyOneNoteApp)
+                _retainedForTests.Add(session);
+            else
+                session.Dispose();
+        }
         AppFactoryOverride = null;
+        ActivationBackoff = Thread.Sleep;
+    }
+
+    /// <summary>
+    /// Disposes and evicts every cached session, releasing their COM objects.
+    /// Called on host shutdown; a later <see cref="For"/> starts a fresh session.
+    /// </summary>
+    public static void DisposeAll()
+    {
+        foreach (var clsid in _sessions.Keys)
+            if (_sessions.TryRemove(clsid, out var session))
+                session.Dispose();
     }
 
     private static IOneNoteApp CreateApp(string clsid) =>
@@ -169,8 +200,10 @@ public sealed class OneNoteSession : IDisposable
     public static string? LastComError { get; private set; }
 
     private readonly Func<IOneNoteApp> _appFactory;
-    private readonly SemaphoreSlim _lock = new(1, 1);
-    private IOneNoteApp? _app;
+    private readonly StaComExecutor _executor = new();
+    private volatile IOneNoteApp? _app;
+    private volatile bool _disposed;
+    private int _disposeStarted;
 
     /// <summary>
     /// Creates a session with an injectable COM app factory.
@@ -199,31 +232,53 @@ public sealed class OneNoteSession : IDisposable
     /// <summary>
     /// Ensures the COM application object exists, (re)creating it via the
     /// factory when it is null (first use or after a dead-proxy invalidation).
-    /// Must be called inside the semaphore.
+    /// Must be called on the executor thread.
     /// </summary>
     private void EnsureApp()
     {
-        if (_app is null)
-            _app = _appFactory();
+        for (int attempt = 1; _app is null; attempt++)
+        {
+            try
+            {
+                _app = _appFactory();
+            }
+            catch (COMException ex) when (ex.HResult == HrServerExecFailure && attempt < MaxActivationAttempts)
+            {
+                ActivationBackoff(TimeSpan.FromSeconds(1 << (attempt - 1)));
+            }
+        }
     }
 
     /// <summary>
-    /// Marks the current COM app object as dead so <see cref="EnsureApp"/>
-    /// will recreate it on the next call.
+    /// Releases the current COM app object (best effort: it may already be dead)
+    /// so <see cref="EnsureApp"/> recreates it on the next call.
+    /// Must be called on the executor thread.
     /// </summary>
-    private void InvalidateApp() => _app = null;
+    private void InvalidateApp()
+    {
+        var app = _app;
+        _app = null;
+        try { app?.Dispose(); }
+        catch (Exception) { /* dead proxy: nothing left to release */ }
+    }
 
     /// <summary>Exposes invalidation for test scenarios that simulate a dead COM proxy.</summary>
-    internal void InvalidateForTests() => InvalidateApp();
+    internal void InvalidateForTests() => _executor.Invoke(() => { InvalidateApp(); return 0; });
 
     /// <summary>
-    /// Runs a COM operation under the serialising semaphore with retry and
-    /// recreate-on-death. Delegates through the IOneNoteApp adapter so the same
+    /// Runs a COM operation on the STA executor with retry and recreate-on-death. Delegates through the IOneNoteApp adapter so the same
     /// path works for both the modern and legacy (v12) COM servers.
     /// </summary>
     private T Dispatch<T>(Func<IOneNoteApp, T> op, int maxAttempts = 5)
     {
-        _lock.Wait();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _executor.Invoke(() => DispatchOnOwner(op, maxAttempts));
+    }
+
+    private T DispatchOnOwner<T>(Func<IOneNoteApp, T> op, int maxAttempts)
+    {
+        // Disposal may have started while this item was queued.
+        ObjectDisposedException.ThrowIf(_disposed, this);
         try
         {
             return ComRetry.Execute(() =>
@@ -249,10 +304,6 @@ public sealed class OneNoteSession : IDisposable
             InvalidateApp();
             throw;
         }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     /// <summary>Void overload of <see cref="Dispatch{T}"/>.</summary>
@@ -264,7 +315,7 @@ public sealed class OneNoteSession : IDisposable
     /// OneNote's STA COM frequently returns transient RPC_E_CALL_REJECTED /
     /// RPC_E_SERVERCALL_RETRYLATER <em>after</em> a create/new has already taken
     /// effect; retrying such an op would duplicate the created object (e.g. a page).
-    /// The serialising semaphore and recreate-on-death behaviour are preserved; only
+    /// Serialisation and recreate-on-death behaviour are preserved; only
     /// the transient-error retry loop is suppressed.
     /// </summary>
     private T DispatchOnce<T>(Func<IOneNoteApp, T> op) => Dispatch(op, maxAttempts: 1);
@@ -382,6 +433,15 @@ public sealed class OneNoteSession : IDisposable
     public void SetFilingLocation(int filingLocation, int filingLocationType, string sectionId) =>
         Dispatch(a => a.SetFilingLocation(filingLocation, filingLocationType, sectionId));
 
-    /// <inheritdoc/>
-    public void Dispose() => _lock.Dispose();
+    /// <summary>
+    /// Rejects new calls, waits for in-flight work, releases the COM object on its
+    /// owner thread, then stops that thread. Idempotent.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) == 1) return;
+        _disposed = true;
+        _executor.Invoke(() => { InvalidateApp(); return 0; });
+        _executor.Dispose();
+    }
 }

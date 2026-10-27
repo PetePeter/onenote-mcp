@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Office.Interop.OneNote;
 
@@ -12,8 +13,28 @@ namespace OneNoteMcp.Interop;
 public sealed class ModernOneNoteApp : IOneNoteApp
 {
     private readonly IApplication _app;
+    private readonly bool _ownsComObject;
+    private bool _disposed;
 
-    public ModernOneNoteApp(IApplication app) => _app = app;
+    /// <param name="app">The OneNote application RCW (or a fake in tests).</param>
+    /// <param name="ownsComObject">
+    /// True when this adapter owns the RCW and must release it on dispose.
+    /// Pass false for a borrowed object the caller keeps alive.
+    /// </param>
+    public ModernOneNoteApp(IApplication app, bool ownsComObject = true)
+    {
+        _app = app;
+        _ownsComObject = ownsComObject;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_ownsComObject && Marshal.IsComObject(_app))
+            Marshal.FinalReleaseComObject(_app);
+    }
 
     /// <inheritdoc/>
     public string GetHierarchy(string startNodeId, int scope, int xmlSchema)

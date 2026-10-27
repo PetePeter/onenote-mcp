@@ -56,6 +56,8 @@ public sealed class PageWriteToolsUnitTests : IDisposable
 
         public void DeleteHierarchy(string objectId) => DeleteCalls++;
 
+        public void Dispose() { }
+
         // ── Unused surface ───────────────────────────────────────────────────────
         public string GetHierarchy(string s, int a, int b) => "";
         public string FindPages(string s, int a, string b = "") => "";
@@ -118,6 +120,7 @@ public sealed class PageWriteToolsUnitTests : IDisposable
     {
         private readonly Func<string> _getHierarchy;
         public RetryReadFake(Func<string> getHierarchy) => _getHierarchy = getHierarchy;
+        public void Dispose() { }
         public string GetHierarchy(string s, int a, int b) => _getHierarchy();
         public string CreateNewPage(string sectionId, int newPageStyle = OneNoteNewPageStyle.NpsDefault) => "";
         public string FindPages(string s, int a, string b = "") => "";

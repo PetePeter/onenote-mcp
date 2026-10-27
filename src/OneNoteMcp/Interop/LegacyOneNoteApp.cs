@@ -1,5 +1,6 @@
 extern alias Legacy;
 
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using L = Legacy::Microsoft.Office.Interop.OneNote;
 
@@ -15,8 +16,28 @@ namespace OneNoteMcp.Interop;
 public sealed class LegacyOneNoteApp : IOneNoteApp
 {
     private readonly L.IApplication _app;
+    private readonly bool _ownsComObject;
+    private bool _disposed;
 
-    public LegacyOneNoteApp(L.IApplication app) => _app = app;
+    /// <param name="app">The OneNote application RCW (or a fake in tests).</param>
+    /// <param name="ownsComObject">
+    /// True when this adapter owns the RCW and must release it on dispose.
+    /// Pass false for a borrowed object the caller keeps alive.
+    /// </param>
+    public LegacyOneNoteApp(L.IApplication app, bool ownsComObject = true)
+    {
+        _app = app;
+        _ownsComObject = ownsComObject;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_ownsComObject && Marshal.IsComObject(_app))
+            Marshal.FinalReleaseComObject(_app);
+    }
 
     /// <inheritdoc/>
     public string GetHierarchy(string startNodeId, int scope, int xmlSchema)

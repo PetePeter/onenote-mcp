@@ -26,6 +26,7 @@ public static class ServerHost
             })
             .ConfigureServices(services =>
             {
+                services.AddHostedService<OneNoteSessionLifetime>();
                 services
                     .AddMcpServer()
                     .WithStdioServerTransport()

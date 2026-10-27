@@ -25,6 +25,24 @@ public sealed class FakeOneNoteApp : IOneNoteApp
     /// <summary>When true, every method call throws the "server unavailable" COMException.</summary>
     public bool DeadProxy { get; set; }
 
+    /// <summary>Number of times <see cref="Dispose"/> was called.</summary>
+    public int DisposeCount { get; private set; }
+
+    /// <summary>Managed thread id of each COM-surface call, in order.</summary>
+    public List<int> CallThreadIds { get; } = new();
+
+    /// <summary>Managed thread id of the last <see cref="Dispose"/> call.</summary>
+    public int? DisposeThreadId { get; private set; }
+
+    /// <summary>Optional hook run at the start of every COM-surface call (e.g. to block).</summary>
+    public Action? OnCall { get; set; }
+
+    public void Dispose()
+    {
+        DisposeCount++;
+        DisposeThreadId = Environment.CurrentManagedThreadId;
+    }
+
     private void Record(string method, params object?[] args)
     {
         LastMethod = method;
@@ -33,6 +51,8 @@ public sealed class FakeOneNoteApp : IOneNoteApp
 
     private void Guard()
     {
+        CallThreadIds.Add(Environment.CurrentManagedThreadId);
+        OnCall?.Invoke();
         if (ThrowIfCalled) throw new InvalidOperationException("COM must not be reached");
         if (DeadProxy) throw new COMException("Server unavailable", unchecked((int)0x800706BA));
     }
